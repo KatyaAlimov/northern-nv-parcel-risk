@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+.venv/
+venv/
+.env
+.env.*
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Large / generated GIS outputs (rebuild with 04_build_reno_tiles.py)
+outputs/*
+!outputs/.gitkeep
+*.pmtiles
+*.parquet
+*.geojsonl
+*.log
+
+# Local analysis dumps at repo root
+analyzed_parcels.geojson
+*.geojson
+!templates/**
+
+# Keep small demo HTML out of git if regenerated
+# (city map template is under templates/)

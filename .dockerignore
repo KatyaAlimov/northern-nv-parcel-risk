@@ -1,0 +1,11 @@
+outputs/*
+!outputs/.gitkeep
+__pycache__/
+*.pyc
+.Python
+.venv/
+venv/
+.env
+.DS_Store
+analyzed_parcels.geojson
+*.log
