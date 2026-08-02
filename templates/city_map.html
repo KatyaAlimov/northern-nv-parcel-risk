@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>NV Parcel Risk (PMTiles)</title>
+  <title>Northern NV Parcel Risk</title>
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
@@ -45,8 +45,8 @@
 </head>
 <body>
   <div class="panel">
-    <h1 id="panel-title">Nevada Parcel Risk</h1>
-    <div>Multi-county flood + fault scoring · switch county below · scroll to zoom.</div>
+    <h1 id="panel-title">Northern NV Parcel Risk</h1>
+    <div>Northern Nevada flood + fault scoring · switch county below · scroll to zoom.</div>
 
     <div class="search-row" style="margin-top:8px;">
       <label for="region-select" style="align-self:center;">County</label>
@@ -353,7 +353,7 @@
           if (!head.ok) {
             setStatus(
               `County tiles not ready yet (${region.file}). Lookup still works; ` +
-                "map colors appear after the tile build finishes. Try Washoe / Storey / Lyon for full map color.",
+                "map colors appear after the tile build finishes. Switch to a built northern NV county.",
               true
             );
           }

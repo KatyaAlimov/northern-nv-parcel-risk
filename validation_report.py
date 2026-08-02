@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Validation report for Washoe parcel risk scores.
+Validation report for northern Nevada parcel risk scores.
 
 Checks:
   - AHP consistency from config
@@ -145,7 +145,7 @@ def sensitivity_ahp(gdf: gpd.GeoDataFrame, delta: float = 0.20) -> dict:
 
 def to_markdown(report: dict) -> str:
     lines = [
-        "# Washoe Parcel Risk — Validation Report",
+        "# Northern Nevada Parcel Risk — Validation Report",
         "",
         f"**Dataset:** `{report['dataset_source']}`",
         f"**Parcels:** {report['coincidence']['n_parcels']}",

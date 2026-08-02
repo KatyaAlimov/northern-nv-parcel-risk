@@ -1,8 +1,11 @@
-# Nevada Parcel Risk Pipeline
+# Northern Nevada Parcel Risk Pipeline
 
-Multi-county flood + fault scoring for Nevada parcels. Switch counties in the app
-or city map — 16 Nevada counties (Washoe, Storey, Lyon, Carson City, Douglas, Churchill, Pershing, Humboldt, Elko, Lander, Mineral, Nye, White Pine, Eureka, Lincoln, Esmeralda)
-(add more in `config/regions.yaml`).
+Flood + fault scoring for **northern Nevada** parcels. Pick a county in the lookup
+app or the interactive map — same scoring rules everywhere.
+
+**Map-ready counties today:** Washoe, Storey, Lyon, Carson City, Douglas, Churchill,
+Humboldt, Elko. More counties can be added in `config/regions.yaml` once a public
+parcel service is available and tiles are built.
 
 > Demo / portfolio project only — not an official flood, geologic, or insurance determination.
 
@@ -13,7 +16,7 @@ or city map — 16 Nevada counties (Washoe, Storey, Lyon, Carson City, Douglas, 
 ### Fastest path (Docker)
 
 You need Docker Desktop running. County tiles should already be in `outputs/*_risk.pmtiles`
-(if not, see [Build city tiles](#build-city-tiles-once) below).
+(if not, see [Build county tiles](#build-county-tiles-once) below).
 
 ```bash
 cd wash_county_risk_pipeline
@@ -38,29 +41,36 @@ python3 -m pip install -r requirements.txt
 python3 -m streamlit run app.py
 # → http://localhost:8501
 
-# City map (needs PMTiles first)
+# County map (needs PMTiles first)
 python3 05_serve_city_map.py
 # → http://localhost:8080/city_map.html
 ```
 
 ### How to use the lookup app
 
-1. Pick **City area**, **Street address**, or **APN**
+1. Pick a **county**, then **City area**, **Street address**, or **APN**
 2. Click **Analyze risk** (wait ~10–40 seconds)
 3. Read the map, risk table, and download CSV / GeoJSON if you want
 
-### Build city tiles (once per region)
+### Build county tiles (once per region)
 
 ```bash
 brew install tippecanoe
-python3 04_build_reno_tiles.py --region washoe      # → outputs/reno_risk.pmtiles
+
+python3 04_build_reno_tiles.py --region washoe       # → outputs/reno_risk.pmtiles (legacy filename)
 python3 04_build_reno_tiles.py --region storey
 python3 04_build_reno_tiles.py --region lyon
 python3 04_build_reno_tiles.py --region carson
 python3 04_build_reno_tiles.py --region douglas
 python3 04_build_reno_tiles.py --region churchill
+python3 04_build_reno_tiles.py --region humboldt
+python3 04_build_reno_tiles.py --region elko
+
 # Optional: --max-parcels 5000 for a quicker sample build
+# Optional: --tiles-only to rebuild PMTiles from an existing parquet
 ```
+
+The map dropdown only lists counties that already have a valid `*_risk.pmtiles` file.
 
 ### Check scoring math
 
@@ -73,7 +83,8 @@ python3 validation_report.py
 
 ## Project Overview
 
-**Problem:** Checking flood zones and nearby faults parcel-by-parcel in a desktop GIS is slow.
+**Problem:** Checking flood zones and nearby faults one parcel at a time in desktop
+GIS is slow, and raw layers don’t give a clear High / Moderate / Low answer.
 
 **What this does:**
 
@@ -81,10 +92,12 @@ python3 validation_report.py
 2. Measures whether a parcel is in a flood zone, and how far it is from a fault  
 3. Combines those into one **High / Moderate / Low** risk score  
 4. Shows results in two places:
-   - **App** — live lookup for a street, APN, or district  
-   - **City map** — pre-built PMTiles per county (multi-county Nevada coverage)  
+   - **Lookup app** — live street / APN / district search for a chosen county  
+   - **County map** — pre-built PMTiles so you can pan/zoom northern NV counties  
 
-Same scoring rules for both. Rules live in `config/scoring_config.yaml` so you can change weights without rewriting code.
+Same scoring rules for both. Rules live in `config/scoring_config.yaml` so you can
+change weights without rewriting code. County parcel endpoints and field maps live
+in `config/regions.yaml`.
 
 ---
 
@@ -94,22 +107,24 @@ Same scoring rules for both. Rules live in `config/scoring_config.yaml` so you c
   DATA (web GIS services)              ANALYSIS                    YOU SEE
  ─────────────────────────        ─────────────────          ─────────────────
 
-  Washoe parcels  ──┐
+  County parcels  ──┐
+  (per-county REST) │
                     │
   FEMA / Esri flood ┼──►  Scoring engine  ──►  Lookup app     (:8501)
                     │     (Python)              search street / APN / area
   USGS faults     ──┘           │
                                 │
-                                └──►  City tiles  ──►  City map  (:8080)
-                                      (PMTiles)         pan/zoom all Reno
+                                └──►  County tiles ──► County map (:8080)
+                                      (PMTiles)         pan/zoom by county
 ```
 
 | Piece | Job |
 |---|---|
 | Scoring engine (`risk_engine.py`) | Fetch data, run GIS math, apply weights |
+| Region config (`regions.yaml`) | Multi-county parcel URLs + field maps |
 | Streamlit app | Interactive search and Folium map |
-| PMTiles + MapLibre | Fast map for the whole city |
-| Docker (`app` + `web` + `api`) | Runs the app and hosts the city map |
+| PMTiles + MapLibre | Fast map for each built county |
+| Docker (`app` + `web` + `api`) | Runs the app and hosts the county map |
 
 ---
 
@@ -146,11 +161,11 @@ Technical notes:
 |---|---|
 | Language | Python, HTML/JS |
 | GIS analysis | GeoPandas, Shapely (`make_valid`), GeoParquet / FlatGeobuf |
-| Live data | ArcGIS REST (Washoe, Esri flood, USGS) |
+| Live data | ArcGIS REST (county parcels, Esri flood, USGS faults) |
 | Lookup app | Streamlit + Folium |
-| City map | MapLibre + tippecanoe / PMTiles |
+| County map | MapLibre + tippecanoe / PMTiles |
 | Hosting | Docker Compose + nginx |
-| Settings | YAML config |
+| Settings | YAML (`scoring_config.yaml`, `regions.yaml`) |
 
 **Useful files**
 
@@ -158,9 +173,10 @@ Technical notes:
 |---|---|
 | `app.py` | Lookup app |
 | `risk_engine.py` | Shared GIS + scoring |
+| `config/regions.yaml` | Northern NV counties + parcel sources |
 | `config/scoring_config.yaml` | Weights, flood rules, tiers |
-| `04_build_reno_tiles.py` | Build city-wide tiles |
-| `templates/city_map.html` | City map page |
+| `04_build_reno_tiles.py` | Build county-wide tiles (`--region …`) |
+| `templates/city_map.html` | County map page |
 | `docker-compose.yml` | One-command deploy |
 | `validation_report.py` | Sanity-check the scores |
 
@@ -168,9 +184,9 @@ Technical notes:
 
 ## Data sources
 
-- Washoe County Open Data — parcels  
-- Esri Living Atlas — flood hazard  
-- USGS — Quaternary faults (Nevada)  
+- **County parcel layers** via ArcGIS REST (Washoe Open Data; other northern NV counties use their own GIS / ArcGIS Online endpoints where public)  
+- **Esri Living Atlas** — flood hazard  
+- **USGS** — Quaternary faults (Nevada)  
 
 ---
 

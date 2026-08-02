@@ -1,5 +1,5 @@
 services:
-  # Public entry: static city_map.html + reno_risk.pmtiles (Range/206 via nginx)
+  # Public entry: county map HTML + PMTiles (Range/206 via nginx)
   web:
     image: nginx:1.27-alpine
     ports:
