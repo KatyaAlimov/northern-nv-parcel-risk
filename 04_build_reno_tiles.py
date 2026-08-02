@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Precompute flood/fault risk for a region and build PMTiles.
+Build scored county parcel tiles (Parquet + GeoJSONL + PMTiles).
 
-Resume-safe. Requires tippecanoe: brew install tippecanoe
+Fetches parcels in a grid, scores flood/fault risk, and runs tippecanoe.
+If interrupted, re-run the same command — finished grid cells are skipped.
 
-Usage:
+Requires tippecanoe: brew install tippecanoe
+
+Examples:
   python3 04_build_reno_tiles.py --region washoe
-  python3 04_build_reno_tiles.py --region storey
-  python3 04_build_reno_tiles.py --region lyon --max-parcels 3000
-  python3 04_build_reno_tiles.py --region storey --tiles-only
+  python3 04_build_reno_tiles.py --region elko --grid-rows 12 --grid-cols 10
+  python3 04_build_reno_tiles.py --region carson --tiles-only
 """
 
 from __future__ import annotations

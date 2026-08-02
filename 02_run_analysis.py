@@ -1,12 +1,8 @@
 """
-ESRI STEP 3 & 4: Choose methods and perform analysis (batch / demo mode).
+Batch step 2: score the prepared neighborhood (flood + fault MCDA).
 
-GIS-MCDA framework:
-  - AHP (Saaty 1980) criteria weights for Flood vs Fault
-  - FEMA NFIP flood sub-scores
-  - Continuous Alquist-Priolo exponential fault distance decay
-
-Exports GeoParquet (+ FlatGeobuf) for 03_build_app.py.
+Uses AHP weights and fault-distance decay from config/scoring_config.yaml.
+Writes scored GeoParquet for 03_build_app.py.
 """
 
 import os
@@ -31,7 +27,7 @@ DEMO_RADIUS_M = 1000
 DEMO_NEIGHBORHOOD_LIMIT = 300
 
 print("\n=========================================================")
-print(" ESRI STEP 3 & 4: GIS-MCDA RISK ANALYSIS")
+print(" STEP 2: FLOOD + FAULT RISK ANALYSIS")
 print("=========================================================\n")
 
 print("[1/4] Analytic Hierarchy Process (AHP) criteria weighting...")

@@ -1,3 +1,10 @@
+# Northern Nevada county definitions for the parcel risk pipeline.
+# Each region sets bounds, map camera, parcel ArcGIS REST URL, field maps,
+# and optional lookup / area presets. Add or edit counties here.
+#
+# Map-ready counties need a matching outputs/<stem>_risk.pmtiles file
+# (Washoe uses legacy filename reno_risk.pmtiles).
+
 default_region: washoe
 regions:
   washoe:

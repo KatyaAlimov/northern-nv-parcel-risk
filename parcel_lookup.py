@@ -1,9 +1,9 @@
 """
-Region-aware parcel street/APN lookup for the map API and Streamlit.
+Parcel street / APN lookup for the map API and Streamlit app.
 
-Uses config/regions.yaml `lookup` block when present, else `parcels`.
-Falls back to scored GeoParquet under outputs/ when remote ArcGIS is down.
-Storey (no street attributes): Nominatim geocode → spatial parcel query (local or REST).
+Reads county endpoints and field maps from config/regions.yaml. Prefers the
+optional `lookup` block when present; otherwise uses `parcels`. If remote
+ArcGIS is unavailable, falls back to scored GeoParquet under outputs/.
 """
 
 from __future__ import annotations
@@ -19,11 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from regions_loader import get_region, parquet_stem
 
-USER_AGENT = "NVParcelRiskLookup/2.0 (portfolio; multi-county NV)"
-
-# Scored tile builds (APN lookup works even when county REST is down)
-# Stem comes from regions_loader.parquet_stem()
-
+USER_AGENT = "NorthernNVParcelRisk/1.0"
 
 def _escape_sql(value: str) -> str:
     return value.replace("'", "''")

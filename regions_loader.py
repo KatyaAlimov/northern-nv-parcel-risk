@@ -1,4 +1,9 @@
-"""Load config/regions.yaml for multi-county parcel sources."""
+"""
+Region configuration helpers for northern Nevada counties.
+
+Loads config/regions.yaml: parcel REST URLs, field maps, bounds, and the compact
+catalog used by the MapLibre county map (/api/regions).
+"""
 
 from __future__ import annotations
 

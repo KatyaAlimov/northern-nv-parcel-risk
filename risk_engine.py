@@ -1,8 +1,11 @@
 """
-Shared multi-county Nevada flood + fault risk analysis engine.
+Shared flood + fault risk analysis for northern Nevada parcels.
 
-Uses ArcGIS REST geospatial web services and GeoPandas overlays.
-CRS workflow: query EPSG:4326 -> analyze EPSG:32611 (meters) -> map EPSG:4326.
+Pulls county parcels, FEMA/Esri flood polygons, and USGS fault lines over
+ArcGIS REST. Scores parcels with GeoPandas overlays (flood intersect + fault
+distance), then builds Folium maps for the lookup app.
+
+CRS: query WGS84 (EPSG:4326) → analyze UTM Zone 11N (EPSG:32611) → map WGS84.
 """
 
 from __future__ import annotations
@@ -49,7 +52,7 @@ from spatial_ops import (
 
 TARGET_CRS = _SPATIAL_TARGET_CRS
 WGS84 = _SPATIAL_WGS84
-HEADERS = {"User-Agent": "Mozilla/5.0 (WashoeCountyRiskPipeline)"}
+HEADERS = {"User-Agent": "NorthernNVParcelRisk/1.0"}
 
 WASHOE_PARCELS_URL = (
     "https://wcgisweb.washoecounty.us/arcgis/rest/services/"

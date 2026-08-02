@@ -1,9 +1,9 @@
 """
-Northern Nevada parcel flood + fault risk lookup.
+Northern Nevada parcel flood + fault risk lookup (Streamlit).
 
-Interactive web GIS: search by street/APN or map a district using live REST services.
-Counties are configured in config/regions.yaml (Washoe, Storey, Lyon, Carson City,
-Douglas, Churchill, Humboldt, Elko, …).
+Search by street, Assessor's Parcel Number (APN), or preset study area.
+Uses live ArcGIS REST services via risk_engine; counties are defined in
+config/regions.yaml.
 """
 
 from __future__ import annotations
@@ -33,8 +33,8 @@ st.set_page_config(
 
 st.title("Northern Nevada Parcel Risk Lookup")
 st.caption(
-    "Northern NV counties — live REST lookup with FEMA flood overlay + USGS fault "
-    "proximity (AHP weights from config; placeholders pending local calibration). "
+    "Flood overlay (FEMA/Esri) + fault proximity (USGS). "
+    "Scoring weights live in config/scoring_config.yaml. "
     "Not an official flood or insurance determination."
 )
 

@@ -1,7 +1,8 @@
 """
-ESRI STEP 5: Build interactive GIS application (batch / demo mode).
+Batch step 3: write a static Folium HTML map from scored parcels.
 
-Loads scored parcels (GeoParquet preferred) and writes a Folium/Leaflet HTML map.
+Loads outputs/analyzed_parcels and saves outputs/index.html.
+For interactive search use: streamlit run app.py
 """
 
 import os
@@ -9,7 +10,7 @@ import os
 from risk_engine import build_risk_map, read_geodata
 
 print("=========================================================")
-print(" ESRI STEP 5: BUILD INTERACTIVE GIS APPLICATION")
+print(" STEP 3: BUILD STATIC RISK MAP")
 print("=========================================================\n")
 
 input_stem = "outputs/analyzed_parcels"
@@ -25,10 +26,9 @@ os.makedirs("outputs", exist_ok=True)
 output_html = "outputs/index.html"
 risk_map.save(output_html)
 
-print("[3/3] Interactive GIS application compiled successfully!")
+print("[3/3] Map written.")
 print("=========================================================")
-print(f" Web app saved to: '{output_html}'")
-print(" Open 'outputs/index.html' in Chrome or Safari to view!")
-print(" Tip: enable 'Esri Satellite', then optionally 'Satellite Labels'.")
-print(" For interactive address search, run: streamlit run app.py")
+print(f" Saved: '{output_html}'")
+print(" Open in a browser to view.")
+print(" For interactive address search: streamlit run app.py")
 print("=========================================================")

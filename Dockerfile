@@ -16,5 +16,5 @@ COPY templates/ templates/
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8081 8501
 
-# Default: city-map lookup API. Compose overrides for Streamlit.
+# Default: map lookup API. Compose overrides command for Streamlit.
 CMD ["python3", "05_serve_city_map.py", "--host", "0.0.0.0", "--port", "8081", "--dir", "outputs"]

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-Serve county PMTiles maps over HTTP (Range/206) + multi-county /api/lookup.
+Local HTTP server for the county MapLibre map and lookup API.
+
+Serves PMTiles with HTTP Range (206) support, plus:
+  GET /api/regions  — county catalog for the map dropdown
+  GET /api/lookup   — street / APN search
 
 Usage:
   python3 05_serve_city_map.py
-  # open http://localhost:8080/city_map.html?region=lyon
+  open http://localhost:8080/city_map.html
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from regions_loader import map_region_catalog
 
 
 class PMTilesHTTPRequestHandler(SimpleHTTPRequestHandler):
-    """Static file server with HTTP 206 ranges + /api/lookup + /api/regions."""
+    """Static files + Range requests + /api/lookup + /api/regions."""
 
     extensions_map = {
         **getattr(SimpleHTTPRequestHandler, "extensions_map", {}),

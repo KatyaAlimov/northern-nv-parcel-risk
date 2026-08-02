@@ -1,10 +1,10 @@
 #!/bin/bash
-# Start the Washoe Parcel Risk Lookup app
+# Start the Northern Nevada Parcel Risk lookup app (Streamlit).
 cd "$(dirname "$0")"
-echo "Installing/checking dependencies..."
+echo "Checking dependencies..."
 python3 -m pip install -q -r requirements.txt
 echo ""
-echo "Starting app at http://localhost:8501"
-echo "In the sidebar: Street = RIVERSIDE, City = RENO, then click Analyze risk"
+echo "App: http://localhost:8501"
+echo "County map (Docker or 05_serve_city_map.py): http://localhost:8080/city_map.html"
 echo ""
 python3 -m streamlit run app.py --server.port 8501

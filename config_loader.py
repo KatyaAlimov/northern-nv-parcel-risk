@@ -1,5 +1,8 @@
 """
-Load scoring_config.yaml and expose typed helpers for risk_engine / scripts.
+Load config/scoring_config.yaml for AHP weights, flood rules, and risk tiers.
+
+Used by risk_engine and validation_report. Call clear_config_cache() after
+editing the YAML if a long-running process should pick up changes.
 """
 
 from __future__ import annotations

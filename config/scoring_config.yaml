@@ -1,54 +1,48 @@
-# Nevada Parcel Risk scoring configuration
+# Scoring configuration for northern Nevada parcel risk.
 #
-# Weights and λ are placeholders until calibrated with local experts / hazard plans.
-# The pipeline is multi-county (see config/regions.yaml); this file is shared scoring.
-# ---------------------------------------------------------------------------
-# Edit this file to change AHP weights, fault decay, flood tiers, and risk
-# thresholds. Citations document the *methods and regulatory concepts*;
-# numeric preferences (e.g. Flood=1.5×Fault, λ=0.0015) are project assumptions
-# pending local expert / Hazard Mitigation Plan calibration.
-# ---------------------------------------------------------------------------
+# Edit AHP weights, fault decay (lambda), flood zone scores, and High/Moderate/Low
+# thresholds here. Numeric preferences (e.g. Flood 1.5× Fault, λ=0.0015) are
+# project defaults — replace with local expert or hazard-plan values when available.
+#
+# Methods documented under citations (AHP, Alquist-Priolo concepts, FEMA NFIP).
 
 meta:
   version: "1.1"
-  jurisdiction: "Nevada (multi-county parcel risk demo)"
+  jurisdiction: "Northern Nevada (multi-county)"
   purpose: >
-    Transparent flood + fault composite scoring for portfolio / developer-analyst demos.
+    Transparent flood + fault composite scoring for parcel risk maps and lookup.
   disclaimer: >
-    Prototype decision-support scores only. Not an official FEMA flood
-    determination, geologic hazard report, or insurance rating.
+    Decision-support scores only. Not an official FEMA flood determination,
+    geologic hazard report, or insurance rating.
 
 ahp:
   criteria: ["Flood", "Fault"]
   # Saaty pairwise matrix: entry (i,j) = preference of i over j
-  # Flood preferred 1.5× over Fault (placeholder regional judgment)
   pairwise_matrix:
     - [1.0, 1.5]
     - [0.6666666666666666, 1.0]
   consistency_ratio_threshold: 0.10
   notes: >
     Analytic Hierarchy Process (Saaty 1980). Replace the 1.5 preference with
-    expert pairwise judgments or priorities from the Washoe MJHMP.
+    expert pairwise judgments or local hazard mitigation priorities.
 
 fault:
   model: "exponential_decay"
   # score = 100 * exp(-lambda * distance_meters), clamped [0, 100]
   decay_lambda: 0.0015
-  # Alquist-Priolo–inspired reference distances (meters) for documentation /
-  # validation checkpoints (not hard brackets in the continuous model)
+  # Reference distances (meters) for documentation / validation checkpoints
   buffers_meters:
-    core_zone: 150        # ~AP-inspired core proximity target (~score 80)
-    advisory: 500         # mid-field checkpoint (~score 47)
-    far_field: 2000       # distal checkpoint (~score < 5)
+    core_zone: 150
+    advisory: 500
+    far_field: 2000
   calibration_targets:
     - {distance_m: 0, score_approx: 100}
     - {distance_m: 150, score_approx: 80}
     - {distance_m: 500, score_approx: 47}
     - {distance_m: 2000, score_approx: 5}
   notes: >
-    Continuous decay is a GIS-MCDA modeling choice. Anchor distances follow
-    Alquist-Priolo Earthquake Fault Zoning concepts; λ is calibrated to those
-    checkpoints, not taken from a Washoe-specific attenuation study.
+    Continuous decay for MCDA. Anchor distances follow Alquist-Priolo fault-zoning
+    concepts; λ is fitted to the checkpoints above, not a Washoe-specific study.
 
 flood:
   # FEMA NFIP / FIRM zone → sub-score (0–100)
@@ -56,12 +50,11 @@ flood:
   sfha_100yr_score: 100.0
   moderate_500yr_zones: ["X500", "B"]
   moderate_500yr_score: 50.0
-  # Also treat ZONE_SUBTY containing these tokens as moderate (0.2% annual chance)
   moderate_subtype_tokens: ["0.2", "500"]
   minimal_score: 0.0
   notes: >
-    Ordinal encoding of NFIP flood hazard classes for MCDA. Not a HAZUS
-    depth-damage function or NFIP premium formula.
+    Ordinal NFIP hazard classes for MCDA. Not a HAZUS depth-damage function
+    or NFIP premium formula.
 
 tiers:
   high_min: 70.0

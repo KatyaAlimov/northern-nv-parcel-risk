@@ -1,8 +1,10 @@
 """
-STEP 2: Data exploration, preparation & audit (batch / demo mode).
+Batch step 1: fetch and prepare a sample parcel neighborhood.
 
-Fetches a configurable Washoe street sample plus flood/fault layers via risk_engine,
-enforces CRS + topology gates, edge-buffers hazard queries, and writes GeoParquet.
+Downloads parcels (default street sample), flood zones, and fault lines via
+risk_engine, checks CRS/topology, and writes GeoParquet under outputs/.
+
+Run before 02_run_analysis.py for the offline demo pipeline.
 """
 
 import os
@@ -34,7 +36,7 @@ DEMO_MATCH_LIMIT = 25
 DEMO_RADIUS_M = 1000
 
 print("=========================================================")
-print(" STEP 2: DATA EXPLORATION, PREPARATION & AUDIT")
+print(" STEP 1: DATA PREPARATION & AUDIT")
 print("=========================================================\n")
 
 print("[1/5] Fetching live spatial data layers...")

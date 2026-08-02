@@ -1,6 +1,10 @@
 """
-Spatial I/O gates: CRS enforcement, topology repair, GeoParquet/FlatGeobuf,
-and edge-buffered query windows.
+Spatial helpers: CRS checks, topology repair, buffered hazard windows, I/O.
+
+- TARGET_CRS (EPSG:32611): meter-based analysis
+- WGS84 (EPSG:4326): map display and REST queries
+- EDGE_BUFFER_METERS: expand flood/fault fetches past the study window
+- GeoParquet / FlatGeobuf read-write with GeoJSON fallback
 """
 
 from __future__ import annotations
@@ -11,12 +15,12 @@ from typing import Iterable, Optional, Sequence, Tuple, Union
 import geopandas as gpd
 import pandas as pd
 
-# Analysis CRS (meters) and wire CRS (degrees) — keep in sync with risk_engine
+# Keep in sync with risk_engine
 TARGET_CRS = "EPSG:32611"
 WGS84 = "EPSG:4326"
 
-# Expand hazard fetches beyond the study window so faults/flood polys
-# that cross the administrative edge are not truncated.
+# Expand hazard fetches beyond the study window so faults/flood polygons
+# that cross the edge are not truncated.
 EDGE_BUFFER_METERS = 5000.0
 
 Bounds = Tuple[float, float, float, float]
