@@ -19,6 +19,7 @@ outputs/*
 !outputs/.gitkeep
 *.pmtiles
 *.parquet
+*.fgb
 *.geojsonl
 *.log
 

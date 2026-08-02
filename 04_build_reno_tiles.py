@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-Precompute flood/fault risk for all Reno parcels and build a city-wide PMTiles archive.
+Precompute flood/fault risk for a region and build PMTiles.
 
-Resume-safe: re-run to continue after interruption. Requires tippecanoe:
-  brew install tippecanoe
+Resume-safe. Requires tippecanoe: brew install tippecanoe
 
 Usage:
-  python3 04_build_reno_tiles.py
-  python3 04_build_reno_tiles.py --max-parcels 5000   # smaller test build
-  python3 04_build_reno_tiles.py --tiles-only         # rebuild PMTiles from parquet
+  python3 04_build_reno_tiles.py --region washoe
+  python3 04_build_reno_tiles.py --region storey
+  python3 04_build_reno_tiles.py --region lyon --max-parcels 3000
+  python3 04_build_reno_tiles.py --region storey --tiles-only
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import time
@@ -24,24 +23,19 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
+from regions_loader import get_region, region_bounds, region_label, parquet_stem
 from risk_engine import (
     WGS84,
     _iter_grid_cells,
     bounds_to_envelope,
     fetch_fault_lines,
     fetch_flood_zones,
+    hazard_query_bounds,
     query_parcels_in_envelope,
     score_parcels,
 )
 
-# Full Reno parcel extent from Washoe OpenData (CITY='RENO')
-RENO_BOUNDS = (-120.0070, 39.3768, -119.6904, 39.7258)
-
 OUT_DIR = Path("outputs")
-PARQUET_PATH = OUT_DIR / "reno_risk.parquet"
-GEOJSONL_PATH = OUT_DIR / "reno_risk.geojsonl"
-PMTILES_PATH = OUT_DIR / "reno_risk.pmtiles"
-STATE_PATH = OUT_DIR / "reno_build_state.json"
 
 EXPORT_COLS = [
     "APN",
@@ -51,31 +45,45 @@ EXPORT_COLS = [
     "fault_subscore",
     "composite_risk_score",
     "risk_category",
+    "COUNTY",
+    "REGION_ID",
     "geometry",
 ]
 
 
-def load_state() -> dict:
-    if STATE_PATH.exists():
-        return json.loads(STATE_PATH.read_text())
-    return {"completed_cells": [], "city": "RENO"}
+def paths_for_region(region_id: str) -> dict:
+    """Output artifact paths (washoe keeps legacy reno_* filenames)."""
+    stem = parquet_stem(region_id)
+    return {
+        "parquet": OUT_DIR / f"{stem}.parquet",
+        "geojsonl": OUT_DIR / f"{stem}.geojsonl",
+        "pmtiles": OUT_DIR / f"{stem}.pmtiles",
+        "state": OUT_DIR / f"{stem}_build_state.json",
+        "stem": stem,
+    }
 
 
-def save_state(state: dict) -> None:
+def load_state(state_path: Path) -> dict:
+    if state_path.exists():
+        return json.loads(state_path.read_text())
+    return {"completed_cells": [], "region": None}
+
+
+def save_state(state: dict, state_path: Path) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state, indent=2))
+    state_path.write_text(json.dumps(state, indent=2))
 
 
-def load_existing() -> gpd.GeoDataFrame:
-    if not PARQUET_PATH.exists():
+def load_existing(parquet_path: Path) -> gpd.GeoDataFrame:
+    if not parquet_path.exists():
         return gpd.GeoDataFrame(geometry=[], crs=WGS84)
-    gdf = gpd.read_parquet(PARQUET_PATH)
+    gdf = gpd.read_parquet(parquet_path)
     if gdf.crs is None:
         gdf = gdf.set_crs(WGS84)
     return gdf
 
 
-def save_parcels(gdf: gpd.GeoDataFrame) -> None:
+def save_parcels(gdf: gpd.GeoDataFrame, parquet_path: Path) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     if gdf.empty:
         return
@@ -87,15 +95,24 @@ def save_parcels(gdf: gpd.GeoDataFrame) -> None:
         out["fault_dist_meters"] = out["fault_dist_meters"].replace(
             [float("inf"), float("-inf")], pd.NA
         )
-    out.to_parquet(PARQUET_PATH, index=False)
+    out.to_parquet(parquet_path, index=False)
 
 
-def fetch_all_parcels_in_cell(bounds, city: str, page_size: int = 1000) -> gpd.GeoDataFrame:
+def fetch_all_parcels_in_cell(
+    bounds,
+    region: str,
+    city: str | None,
+    page_size: int = 1000,
+) -> gpd.GeoDataFrame:
     frames = []
     offset = 0
     while True:
         page = query_parcels_in_envelope(
-            bounds, limit=page_size, city=city, offset=offset
+            bounds,
+            limit=page_size,
+            city=city,
+            offset=offset,
+            region=region,
         )
         if page.empty:
             break
@@ -103,7 +120,6 @@ def fetch_all_parcels_in_cell(bounds, city: str, page_size: int = 1000) -> gpd.G
         if len(page) < page_size:
             break
         offset += page_size
-        # Safety valve for runaway pagination
         if offset > 50_000:
             break
     if not frames:
@@ -113,8 +129,14 @@ def fetch_all_parcels_in_cell(bounds, city: str, page_size: int = 1000) -> gpd.G
     )
 
 
-def process_cell(cell_id: str, bounds, city: str, seen_apns: set) -> gpd.GeoDataFrame:
-    parcels = fetch_all_parcels_in_cell(bounds, city=city)
+def process_cell(
+    cell_id: str,
+    bounds,
+    region: str,
+    city: str | None,
+    seen_apns: set,
+) -> gpd.GeoDataFrame:
+    parcels = fetch_all_parcels_in_cell(bounds, region=region, city=city)
     if parcels.empty:
         print(f"  [{cell_id}] empty")
         return gpd.GeoDataFrame(geometry=[], crs=WGS84)
@@ -125,7 +147,7 @@ def process_cell(cell_id: str, bounds, city: str, seen_apns: set) -> gpd.GeoData
         print(f"  [{cell_id}] all duplicates, skip score")
         return gpd.GeoDataFrame(geometry=[], crs=WGS84)
 
-    envelope = bounds_to_envelope(bounds)
+    envelope = bounds_to_envelope(hazard_query_bounds(bounds))
     fema = fetch_flood_zones(envelope)
     faults = fetch_fault_lines(envelope)
     scored = score_parcels(parcels, fema, faults)
@@ -145,7 +167,6 @@ def export_geojsonl(gdf: gpd.GeoDataFrame, path: Path) -> None:
             slim[col] = pd.to_numeric(slim[col], errors="coerce")
     if "APN" in slim.columns:
         slim["APN"] = slim["APN"].astype(str)
-    # GeoJSON Text Sequences — fast path for tippecanoe
     if path.exists():
         path.unlink()
     slim.to_file(path, driver="GeoJSONSeq")
@@ -158,9 +179,7 @@ def build_pmtiles(geojsonl: Path, pmtiles: Path) -> None:
 
     tippecanoe = subprocess.run(["which", "tippecanoe"], capture_output=True, text=True)
     if tippecanoe.returncode != 0:
-        raise SystemExit(
-            "tippecanoe not found. Install with: brew install tippecanoe"
-        )
+        raise SystemExit("tippecanoe not found. Install with: brew install tippecanoe")
 
     if pmtiles.exists():
         pmtiles.unlink()
@@ -169,7 +188,7 @@ def build_pmtiles(geojsonl: Path, pmtiles: Path) -> None:
         "tippecanoe",
         "-o",
         str(pmtiles),
-        "-Z10",
+        "-Z6",
         "-z16",
         "--drop-densest-as-needed",
         "--extend-zooms-if-still-dropping",
@@ -206,38 +225,69 @@ def copy_viewer_template() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build Reno city-wide risk PMTiles")
+    parser = argparse.ArgumentParser(description="Build regional risk PMTiles")
+    parser.add_argument(
+        "--region",
+        default="washoe",
+        help="Region id from config/regions.yaml",
+    )
     parser.add_argument("--grid-rows", type=int, default=10)
     parser.add_argument("--grid-cols", type=int, default=10)
     parser.add_argument(
         "--max-parcels",
         type=int,
         default=0,
-        help="Stop after N unique parcels (0 = all Reno)",
+        help="Stop after N unique parcels (0 = all in region)",
     )
     parser.add_argument(
         "--tiles-only",
         action="store_true",
         help="Skip fetching; rebuild geojsonl + PMTiles from parquet",
     )
-    parser.add_argument("--city", default="RENO")
+    parser.add_argument(
+        "--city",
+        default="",
+        help="Optional city filter (Washoe only, e.g. RENO). Empty = full county.",
+    )
+    parser.add_argument(
+        "--reset-state",
+        action="store_true",
+        help="Clear completed-cell resume state (keeps existing parquet parcels).",
+    )
     args = parser.parse_args()
 
+    region_id = args.region.strip().lower()
+    region = get_region(region_id)
+    paths = paths_for_region(region_id)
+    study_bounds = region_bounds(region_id)
+
+    city = args.city.strip().upper() if args.city and args.city.strip() else None
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    city = args.city.upper()
+    print(f"Region: {region_label(region_id)} ({region_id})")
+    print(f"Bounds: {study_bounds}")
+    print(f"City filter: {city or '(none — full county)'}")
+    print(f"Outputs: {paths['parquet'].name}, {paths['pmtiles'].name}")
 
     if not args.tiles_only:
-        state = load_state()
+        if args.reset_state and paths["state"].exists():
+            paths["state"].unlink()
+            print("Cleared build-state resume file.", flush=True)
+        state = load_state(paths["state"])
         completed = set(state.get("completed_cells", []))
-        existing = load_existing()
-        seen = set(existing["APN"].astype(str)) if not existing.empty and "APN" in existing.columns else set()
+        existing = load_existing(paths["parquet"])
+        seen = (
+            set(existing["APN"].astype(str))
+            if not existing.empty and "APN" in existing.columns
+            else set()
+        )
         print(
             f"Resume: {len(completed)} cells done, {len(seen)} parcels on disk. "
             f"Grid {args.grid_rows}x{args.grid_cols}.",
             flush=True,
         )
 
-        cells = list(_iter_grid_cells(RENO_BOUNDS, args.grid_rows, args.grid_cols))
+        cells = list(_iter_grid_cells(study_bounds, args.grid_rows, args.grid_cols))
         t0 = time.time()
         for idx, bounds in enumerate(cells):
             cell_id = f"r{idx // args.grid_cols}_c{idx % args.grid_cols}"
@@ -249,10 +299,11 @@ def main() -> None:
 
             print(f"[{idx + 1}/{len(cells)}] Processing {cell_id} {bounds} ...", flush=True)
             try:
-                scored = process_cell(cell_id, bounds, city=city, seen_apns=seen)
+                scored = process_cell(
+                    cell_id, bounds, region=region_id, city=city, seen_apns=seen
+                )
             except Exception as exc:
                 print(f"  ERROR {cell_id}: {exc}", file=sys.stderr)
-                # Do not mark complete — allow retry
                 continue
 
             if not scored.empty:
@@ -269,30 +320,31 @@ def main() -> None:
                 if args.max_parcels:
                     existing = existing.head(args.max_parcels).copy()
                     seen = set(existing["APN"].astype(str))
-                save_parcels(existing)
+                save_parcels(existing, paths["parquet"])
 
             completed.add(cell_id)
             state["completed_cells"] = sorted(completed)
             state["parcel_count"] = len(seen)
-            save_state(state)
+            state["region"] = region_id
+            save_state(state, paths["state"])
 
         print(
-            f"Fetch complete: {len(seen)} parcels in {time.time() - t0:.0f}s → {PARQUET_PATH}"
+            f"Fetch complete: {len(seen)} parcels in {time.time() - t0:.0f}s → {paths['parquet']}"
         )
 
-    existing = load_existing()
+    existing = load_existing(paths["parquet"])
     if existing.empty:
         raise SystemExit("No scored parcels found. Run without --tiles-only first.")
 
     print(f"Exporting {len(existing)} parcels to GeoJSONL...")
-    export_geojsonl(existing, GEOJSONL_PATH)
-    build_pmtiles(GEOJSONL_PATH, PMTILES_PATH)
+    export_geojsonl(existing, paths["geojsonl"])
+    build_pmtiles(paths["geojsonl"], paths["pmtiles"])
     copy_viewer_template()
 
     print("\nDone.")
-    print("Serve the city map with:")
-    print("  python3 05_serve_city_map.py")
-    print("Then open http://localhost:8080/city_map.html")
+    print("Serve with: python3 05_serve_city_map.py")
+    print(f"Tiles file: {paths['pmtiles']}")
+    print("(City map viewer still defaults to reno_risk.pmtiles — swap filename or symlink to view other counties.)")
 
 
 if __name__ == "__main__":

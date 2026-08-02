@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """
-Serve the Reno city-wide PMTiles map over HTTP.
-
-PMTiles requires real HTTP 206 byte-range responses.
-Also proxies /api/lookup to Washoe parcel REST (avoids browser CORS issues).
+Serve county PMTiles maps over HTTP (Range/206) + multi-county /api/lookup.
 
 Usage:
   python3 05_serve_city_map.py
-  # open http://localhost:8080/city_map.html
+  # open http://localhost:8080/city_map.html?region=lyon
 """
 
 from __future__ import annotations
@@ -18,70 +15,16 @@ import json
 import os
 import re
 import sys
-import urllib.parse
-import urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
-WASHOE_QUERY = (
-    "https://wcgisweb.washoecounty.us/arcgis/rest/services/"
-    "OpenData/OpenData/MapServer/0/query"
-)
-
-
-def lookup_parcels(q: str, city: str = "RENO", limit: int = 40) -> dict:
-    """Query Washoe OpenData for street name or APN matches."""
-    q = (q or "").strip()
-    city = (city or "RENO").strip().upper() or "RENO"
-    limit = max(1, min(int(limit or 40), 100))
-
-    if not q:
-        return {"type": "FeatureCollection", "features": []}
-
-    # APN-like if mostly digits (allows dashes); otherwise treat as street name
-    compact = re.sub(r"[\s\-]", "", q)
-    if compact.isdigit():
-        safe = q.replace("'", "''")
-        where = f"APN LIKE '%{safe}%' AND CITY = '{city}'"
-    else:
-        street = q.upper().replace("'", "''")
-        where = f"STREET LIKE '%{street}%' AND CITY = '{city}'"
-
-    params = {
-        "where": where,
-        "outFields": "APN,STREETNUM,STREETDIR,STREET,CITY,FullAddress",
-        "outSR": "4326",
-        "f": "geojson",
-        "resultRecordCount": str(limit),
-    }
-    url = WASHOE_QUERY + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "WashoeRiskMapLookup/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
-
-    if isinstance(payload, dict) and "error" in payload:
-        raise RuntimeError(payload["error"])
-
-    # Normalize a friendly address property for popups
-    for feat in payload.get("features", []):
-        props = feat.setdefault("properties", {})
-        full = props.get("FullAddress")
-        if full:
-            props["address"] = str(full)
-        else:
-            parts = [
-                str(props.get("STREETNUM") or "").strip(),
-                str(props.get("STREETDIR") or "").strip(),
-                str(props.get("STREET") or "").strip(),
-                str(props.get("CITY") or "").strip(),
-            ]
-            props["address"] = " ".join(p for p in parts if p and p.lower() != "none")
-
-    return payload
+from parcel_lookup import lookup_parcels
+from regions_loader import map_region_catalog
 
 
 class PMTilesHTTPRequestHandler(SimpleHTTPRequestHandler):
-    """Static file server with HTTP 206 ranges + /api/lookup proxy."""
+    """Static file server with HTTP 206 ranges + /api/lookup + /api/regions."""
 
     extensions_map = {
         **getattr(SimpleHTTPRequestHandler, "extensions_map", {}),
@@ -107,19 +50,41 @@ class PMTilesHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
+        parsed = urlparse(self.path)
         if parsed.path == "/api/lookup":
             self.handle_lookup(parsed)
             return
+        if parsed.path == "/api/regions":
+            self.handle_regions()
+            return
         return super().do_GET()
 
+    def handle_regions(self):
+        try:
+            payload = map_region_catalog()
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception as exc:
+            body = json.dumps({"error": str(exc)}).encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
     def handle_lookup(self, parsed):
-        qs = urllib.parse.parse_qs(parsed.query)
+        qs = parse_qs(parsed.query)
         q = (qs.get("q") or [""])[0]
-        city = (qs.get("city") or ["RENO"])[0]
+        city = (qs.get("city") or [""])[0] or None
+        region = (qs.get("region") or ["washoe"])[0]
         limit = (qs.get("limit") or ["40"])[0]
         try:
-            payload = lookup_parcels(q, city=city, limit=limit)
+            payload = lookup_parcels(q, region=region, city=city, limit=limit)
             body = json.dumps(payload).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/geo+json")
@@ -229,15 +194,16 @@ def main() -> None:
         except OSError as exc:
             print(f"WARNING: could not sync city_map.html into {root}: {exc}")
 
-    tiles = root / "reno_risk.pmtiles"
-    if not tiles.exists():
-        print(f"WARNING: {tiles} missing. Run: python3 04_build_reno_tiles.py")
+    for name in ("reno_risk.pmtiles", "storey_risk.pmtiles", "lyon_risk.pmtiles"):
+        tiles = root / name
+        if not tiles.exists():
+            print(f"WARNING: {tiles} missing")
 
     handler = functools.partial(PMTilesHTTPRequestHandler, directory=str(root))
     server = ThreadingHTTPServer((args.host, args.port), handler)
     print(f"Serving {root} on {args.host}:{args.port}")
     print(f"Open http://localhost:{args.port}/city_map.html")
-    print("Endpoints: /city_map.html  /reno_risk.pmtiles  /api/lookup?q=RIVERSIDE")
+    print("Lookup: /api/lookup?q=HARDIE&region=lyon")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

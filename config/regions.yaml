@@ -1,0 +1,820 @@
+default_region: washoe
+regions:
+  washoe:
+    name: Washoe County
+    state: NV
+    description: 'Washoe County parcels via Washoe OpenData (street/APN). Optional CITY filter (RENO /
+      SPARKS / INCLINE VILLAGE, etc.). Full-county PMTiles available.
+
+      '
+    bounds:
+    - -120.1325
+    - 39.1624
+    - -119.1521
+    - 42.013
+    center:
+    - -119.81
+    - 39.53
+    zoom: 11
+    geocode_suffix: Washoe County, Nevada
+    parcels:
+      url: https://wcgisweb.washoecounty.us/arcgis/rest/services/OpenData/OpenData/MapServer/0/query
+      out_fields: OBJECTID,APN,STREETNUM,STREETDIR,STREET,CITY,SITUSZIP,FullAddress
+      base_where: 1=1
+      max_record_count: 1000
+      search:
+        apn_field: APN
+        street_field: STREET
+        city_field: CITY
+      field_map:
+        APN: APN
+        STREETNUM: STREETNUM
+        STREETDIR: STREETDIR
+        STREET: STREET
+        CITY: CITY
+        FullAddress: FullAddress
+    area_presets:
+      Downtown Reno (Truckee corridor):
+      - -119.835
+      - 39.515
+      - -119.8
+      - 39.54
+      Midtown / Virginia St:
+      - -119.82
+      - 39.5
+      - -119.785
+      - 39.525
+      University / N Virginia:
+      - -119.835
+      - 39.535
+      - -119.8
+      - 39.56
+      Airport / S Reno:
+      - -119.8
+      - 39.48
+      - -119.75
+      - 39.52
+      West Reno / Idlewild:
+      - -119.87
+      - 39.505
+      - -119.83
+      - 39.535
+      Sparks core:
+      - -119.77
+      - 39.52
+      - -119.73
+      - 39.55
+      Incline Village / Tahoe:
+      - -119.98
+      - 39.22
+      - -119.9
+      - 39.28
+      Washoe County (full extent):
+      - -120.1325
+      - 39.1624
+      - -119.1521
+      - 42.013
+  storey:
+    name: Storey County
+    state: NV
+    description: 'Statewide NV Demographer parcels filtered to County=''Storey''. Street lookup uses geocoding
+      + nearby parcels (no situs street field).
+
+      '
+    bounds:
+    - -119.7291
+    - 39.2512
+    - -119.268
+    - 39.6289
+    center:
+    - -119.65
+    - 39.31
+    zoom: 12
+    geocode_suffix: Storey County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Storey'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Virginia City / Gold Hill:
+      - -119.66
+      - 39.28
+      - -119.6
+      - 39.35
+      TRI / Lockwood corridor:
+      - -119.72
+      - 39.48
+      - -119.55
+      - 39.58
+      Storey County (full extent):
+      - -119.7291
+      - 39.2512
+      - -119.268
+      - 39.6289
+  lyon:
+    name: Lyon County
+    state: NV
+    description: 'Bulk tiles from NV Demographer; street/APN lookup prefers Lyon Assessor GIS (PLOCNM
+      / PHY_ADDR) when available.
+
+      '
+    bounds:
+    - -119.7201
+    - 38.4098
+    - -118.7534
+    - 39.738
+    center:
+    - -119.25
+    - 39.6
+    zoom: 11
+    geocode_suffix: Lyon County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Lyon'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      url: https://gis.lyon-county.org/server/rest/services/Landbase/Parcels/MapServer/1/query
+      out_fields: APN,STRAP,PLOCNUM,PLOCDR,PLOCNM,PLOCUNUM,PHY_ADDR,PPNAME
+      base_where: 1=1
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: PLOCNM
+        city_field: null
+        extra_street_fields:
+        - PHY_ADDR
+      field_map:
+        APN: APN
+        STREETNUM: PLOCNUM
+        STREETDIR: PLOCDR
+        STREET: PLOCNM
+        CITY: null
+        FullAddress: PHY_ADDR
+      geocode_fallback: true
+    area_presets:
+      Fernley:
+      - -119.3
+      - 39.55
+      - -119.1
+      - 39.7
+      Dayton / Stagecoach:
+      - -119.65
+      - 39.2
+      - -119.45
+      - 39.35
+      Yerington:
+      - -119.2
+      - 38.9
+      - -119.05
+      - 39.05
+      Lyon County (full extent):
+      - -119.7201
+      - 38.4098
+      - -118.7534
+      - 39.738
+  carson:
+    name: Carson City
+    state: NV
+    description: 'Carson City parcels via city Landbase GIS (~22k). Lookup: APN or street.'
+    bounds:
+    - -119.945
+    - 39.075
+    - -119.655
+    - 39.255
+    center:
+    - -119.77
+    - 39.16
+    zoom: 12
+    fullZoom: 10
+    geocode_suffix: Carson City, Nevada
+    parcels:
+      url: https://portal.carsoncity.gov/server/rest/services/Landbase/Landbase/MapServer/0/query
+      out_fields: OBJECTID,APN,Loc1,Dir,Street_Name,Phy_Addr,MCity
+      base_where: 1=1
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: Street_Name
+        city_field: null
+        extra_street_fields:
+        - Phy_Addr
+      field_map:
+        APN: APN
+        STREETNUM: Loc1
+        STREETDIR: Dir
+        STREET: Street_Name
+        CITY: null
+        FullAddress: Phy_Addr
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: Street_Name
+        city_field: null
+        extra_street_fields:
+        - Phy_Addr
+    area_presets:
+      Downtown Carson City:
+      - -119.78
+      - 39.15
+      - -119.75
+      - 39.18
+      Carson City (full extent):
+      - -119.945
+      - 39.075
+      - -119.655
+      - 39.255
+  douglas:
+    name: Douglas County
+    state: NV
+    description: 'Douglas County Open Data parcels (~31k). Lookup: APN/PIN or street.'
+    bounds:
+    - -120.05
+    - 38.68
+    - -119.35
+    - 39.08
+    center:
+    - -119.75
+    - 38.95
+    zoom: 11
+    fullZoom: 9
+    geocode_suffix: Douglas County, Nevada
+    parcels:
+      url: https://gisservices.douglasnv.us/server/rest/services/OpenData/Parcels_Open_Data/FeatureServer/0/query
+      out_fields: OBJECTID,APN,PIN,TAG,PLOC_,PLOCDR,PLOCNM,STREETADDRESS,MAIL_CITY
+      base_where: 1=1
+      max_record_count: 5000
+      search:
+        apn_field: PIN
+        street_field: PLOCNM
+        city_field: MAIL_CITY
+        extra_street_fields:
+        - STREETADDRESS
+        - TAG
+      field_map:
+        APN: PIN
+        STREETNUM: PLOC_
+        STREETDIR: PLOCDR
+        STREET: PLOCNM
+        CITY: MAIL_CITY
+        FullAddress: STREETADDRESS
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: PIN
+        street_field: PLOCNM
+        city_field: null
+        extra_street_fields:
+        - STREETADDRESS
+        - TAG
+    area_presets:
+      Minden / Gardnerville:
+      - -119.8
+      - 38.9
+      - -119.7
+      - 39.0
+      Stateline / Kingsbury:
+      - -119.95
+      - 38.95
+      - -119.9
+      - 39.02
+      Douglas County (full extent):
+      - -120.05
+      - 38.68
+      - -119.35
+      - 39.08
+  churchill:
+    name: Churchill County
+    state: NV
+    description: 'Churchill County Tax Parcels (~14k) via county ArcGIS Online. Lookup: APN or street.'
+    bounds:
+    - -119.15
+    - 39.15
+    - -117.95
+    - 40.05
+    center:
+    - -118.78
+    - 39.47
+    zoom: 11
+    fullZoom: 9
+    geocode_suffix: Churchill County, Nevada
+    parcels:
+      url: https://services2.arcgis.com/uPb1UC2HwTkBAlth/arcgis/rest/services/Churchill_County_Tax_Parcels/FeatureServer/0/query
+      out_fields: OBJECTID,YPNO,ADDNUMB,ADDSTDIR,ADDSTNAME,FULLADD
+      base_where: 1=1
+      max_record_count: 2000
+      search:
+        apn_field: YPNO
+        street_field: ADDSTNAME
+        city_field: null
+        extra_street_fields:
+        - FULLADD
+      field_map:
+        APN: YPNO
+        STREETNUM: ADDNUMB
+        STREETDIR: ADDSTDIR
+        STREET: ADDSTNAME
+        CITY: null
+        FullAddress: FULLADD
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: YPNO
+        street_field: ADDSTNAME
+        city_field: null
+        extra_street_fields:
+        - FULLADD
+    area_presets:
+      Fallon:
+      - -118.85
+      - 39.45
+      - -118.7
+      - 39.52
+      Churchill County (full extent):
+      - -119.15
+      - 39.15
+      - -117.95
+      - 40.05
+  pershing:
+    name: Pershing County
+    state: NV
+    description: 'Pershing County parcels via NV Demographer statewide layer. Lookup: APN or geocode +
+      nearby parcels.'
+    bounds: &id001
+    - -119.4
+    - 40.0
+    - -117.8
+    - 41.0
+    center:
+    - -118.47
+    - 40.18
+    zoom: 10
+    geocode_suffix: Pershing County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Pershing'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Pershing County (full extent): *id001
+      Lovelock:
+      - -118.55
+      - 40.14
+      - -118.4
+      - 40.22
+  humboldt:
+    name: Humboldt County
+    state: NV
+    description: 'Humboldt County MasterParcels (~18k) via county ArcGIS Online. Lookup: APN (YPNO/PIN) or street.'
+    bounds: &id002
+    - -120.0
+    - 40.7
+    - -117.0
+    - 42.0
+    center:
+    - -117.73
+    - 40.97
+    zoom: 9
+    fullCenter:
+    - -118.5
+    - 41.35
+    fullZoom: 7
+    geocode_suffix: Humboldt County, Nevada
+    parcels:
+      url: https://services7.arcgis.com/cbx6hozJyAREK9DB/arcgis/rest/services/County_Maintained_Roads_WFL1/FeatureServer/6/query
+      out_fields: FID,YPNO,PIN,PLOC_,PLOCDR,PLOCNM,PTOWN,PPNAME,PACRES
+      base_where: 1=1
+      max_record_count: 2000
+      search:
+        apn_field: YPNO
+        street_field: PLOCNM
+        city_field: PTOWN
+      field_map:
+        APN: YPNO
+        STREETNUM: PLOC_
+        STREETDIR: PLOCDR
+        STREET: PLOCNM
+        CITY: PTOWN
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: YPNO
+        street_field: PLOCNM
+        city_field: PTOWN
+        extra_street_fields:
+        - PIN
+    area_presets:
+      Humboldt County (full extent): *id002
+      Winnemucca:
+      - -117.8
+      - 40.94
+      - -117.65
+      - 41.02
+  elko:
+    name: Elko County
+    state: NV
+    description: 'Elko County Assessor parcels (YPNO / ADDRESS). ~45k parcels via county GIS FeatureServer.'
+    bounds: &id003
+    - -117.1
+    - 40.0
+    - -114.0
+    - 42.0
+    center:
+    - -115.76
+    - 40.83
+    zoom: 8
+    fullCenter:
+    - -115.55
+    - 41.0
+    fullZoom: 8
+    geocode_suffix: Elko County, Nevada
+    parcels:
+      url: https://gis.elkocountynv.net/server/rest/services/Reference/Parcels/FeatureServer/0/query
+      out_fields: OBJECTID,YPNO,ADDRESS,PTOWN,PPNAME,PACRES
+      base_where: 1=1
+      max_record_count: 2000
+      search:
+        apn_field: YPNO
+        street_field: ADDRESS
+        city_field: PTOWN
+      field_map:
+        APN: YPNO
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: PTOWN
+        FullAddress: ADDRESS
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: YPNO
+        street_field: ADDRESS
+        city_field: PTOWN
+    area_presets:
+      Elko County (full extent): *id003
+      Elko:
+      - -115.85
+      - 40.78
+      - -115.65
+      - 40.9
+  lander:
+    name: Lander County
+    state: NV
+    description: 'Lander County parcels via NV Demographer statewide layer. Lookup: APN or geocode + nearby
+      parcels.'
+    bounds: &id004
+    - -117.9
+    - 39.2
+    - -116.5
+    - 41.0
+    center:
+    - -117.0
+    - 40.6
+    zoom: 9
+    geocode_suffix: Lander County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Lander'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Lander County (full extent): *id004
+      Battle Mountain:
+      - -117.05
+      - 40.55
+      - -116.9
+      - 40.7
+  mineral:
+    name: Mineral County
+    state: NV
+    description: 'Mineral County parcels via NV Demographer statewide layer. Lookup: APN or geocode +
+      nearby parcels.'
+    bounds: &id005
+    - -119.25
+    - 38.15
+    - -117.8
+    - 39.2
+    center:
+    - -118.62
+    - 38.52
+    zoom: 10
+    geocode_suffix: Mineral County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Mineral'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Mineral County (full extent): *id005
+      Hawthorne:
+      - -118.7
+      - 38.48
+      - -118.55
+      - 38.58
+  nye:
+    name: Nye County
+    state: NV
+    description: 'Nye County parcels via NV Demographer statewide layer. Lookup: APN or geocode + nearby
+      parcels.'
+    bounds: &id006
+    - -118.2
+    - 36.0
+    - -115.0
+    - 39.4
+    center:
+    - -116.5
+    - 38.0
+    zoom: 7
+    geocode_suffix: Nye County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Nye'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Nye County (full extent): *id006
+      Tonopah:
+      - -117.3
+      - 38.04
+      - -117.18
+      - 38.12
+      Pahrump:
+      - -116.1
+      - 36.15
+      - -115.9
+      - 36.3
+  white_pine:
+    name: White Pine County
+    state: NV
+    description: 'White Pine County parcels via NV Demographer statewide layer. Lookup: APN or geocode
+      + nearby parcels.'
+    bounds: &id007
+    - -116.05
+    - 38.5
+    - -114.0
+    - 40.5
+    center:
+    - -114.88
+    - 39.25
+    zoom: 8
+    geocode_suffix: White Pine County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'White Pine'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      White Pine County (full extent): *id007
+      Ely:
+      - -114.95
+      - 39.22
+      - -114.82
+      - 39.3
+  eureka:
+    name: Eureka County
+    state: NV
+    description: 'Eureka County parcels via NV Demographer statewide layer. Lookup: APN or geocode + nearby
+      parcels.'
+    bounds: &id008
+    - -116.8
+    - 39.0
+    - -115.5
+    - 41.0
+    center:
+    - -115.96
+    - 39.51
+    zoom: 8
+    geocode_suffix: Eureka County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Eureka'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Eureka County (full extent): *id008
+      Eureka:
+      - -116.0
+      - 39.48
+      - -115.9
+      - 39.55
+  lincoln:
+    name: Lincoln County
+    state: NV
+    description: 'Lincoln County parcels via NV Demographer statewide layer. Lookup: APN or geocode +
+      nearby parcels.'
+    bounds: &id009
+    - -115.9
+    - 36.8
+    - -114.0
+    - 38.7
+    center:
+    - -114.8
+    - 37.6
+    zoom: 8
+    geocode_suffix: Lincoln County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Lincoln'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Lincoln County (full extent): *id009
+      Caliente:
+      - -114.55
+      - 37.6
+      - -114.48
+      - 37.65
+  esmeralda:
+    name: Esmeralda County
+    state: NV
+    description: 'Esmeralda County parcels via NV Demographer statewide layer. Lookup: APN or geocode
+      + nearby parcels.'
+    bounds: &id010
+    - -118.25
+    - 37.5
+    - -117.2
+    - 38.2
+    center:
+    - -117.63
+    - 37.78
+    zoom: 10
+    geocode_suffix: Esmeralda County, Nevada
+    parcels:
+      url: https://arcgis.water.nv.gov/arcgis/rest/services/BaseLayers/County_Parcels_in_Nevada/MapServer/0/query
+      out_fields: OBJECTID,APN,County,SiteCity,PIN,Website,Acres
+      base_where: County = 'Esmeralda'
+      max_record_count: 2000
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+      field_map:
+        APN: APN
+        STREETNUM: null
+        STREETDIR: null
+        STREET: null
+        CITY: SiteCity
+        FullAddress: null
+    lookup:
+      geocode_fallback: true
+      search:
+        apn_field: APN
+        street_field: null
+        city_field: SiteCity
+    area_presets:
+      Esmeralda County (full extent): *id010
+      Goldfield:
+      - -117.25
+      - 37.7
+      - -117.22
+      - 37.72

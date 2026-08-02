@@ -1,5 +1,5 @@
 """
-Shared Washoe County flood + fault risk analysis engine.
+Shared multi-county Nevada flood + fault risk analysis engine.
 
 Uses ArcGIS REST geospatial web services and GeoPandas overlays.
 CRS workflow: query EPSG:4326 -> analyze EPSG:32611 (meters) -> map EPSG:4326.
@@ -8,6 +8,7 @@ CRS workflow: query EPSG:4326 -> analyze EPSG:32611 (meters) -> map EPSG:4326.
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Iterable, Optional, Sequence, Tuple, Union
 
 import folium
@@ -25,9 +26,29 @@ from config_loader import (
     load_scoring_config,
     tier_thresholds as _cfg_tier_thresholds,
 )
+from regions_loader import (
+    default_region_id,
+    get_region,
+    list_region_ids,
+    region_area_presets,
+    region_bounds,
+    region_label,
+    parquet_stem,
+)
+from spatial_ops import (
+    EDGE_BUFFER_METERS,
+    TARGET_CRS as _SPATIAL_TARGET_CRS,
+    WGS84 as _SPATIAL_WGS84,
+    edge_buffered_bounds,
+    ensure_crs,
+    prepare_layer,
+    read_geodata,
+    sanitize_geometries,
+    write_geodata,
+)
 
-TARGET_CRS = "EPSG:32611"
-WGS84 = "EPSG:4326"
+TARGET_CRS = _SPATIAL_TARGET_CRS
+WGS84 = _SPATIAL_WGS84
 HEADERS = {"User-Agent": "Mozilla/5.0 (WashoeCountyRiskPipeline)"}
 
 WASHOE_PARCELS_URL = (
@@ -83,65 +104,184 @@ RISK_COLORS = {
 
 Bounds = Tuple[float, float, float, float]  # minx, miny, maxx, maxy in WGS84
 
-# Named study areas so users can map a large Reno district (not one street)
-AREA_PRESETS: dict = {
-    "Downtown Reno (Truckee corridor)": (-119.835, 39.515, -119.800, 39.540),
-    "Midtown / Virginia St": (-119.820, 39.500, -119.785, 39.525),
-    "University / N Virginia": (-119.835, 39.535, -119.800, 39.560),
-    "Airport / S Reno": (-119.800, 39.480, -119.750, 39.520),
-    "West Reno / Idlewild": (-119.870, 39.505, -119.830, 39.535),
-    "Sparks core": (-119.770, 39.520, -119.730, 39.550),
-}
+# Backward-compatible Washoe presets (also available via region_area_presets("washoe"))
+AREA_PRESETS: dict = region_area_presets("washoe")
 
 
-def fetch_arcgis_geojson(url: str, params: Optional[dict] = None) -> gpd.GeoDataFrame:
-    """Fetch GeoJSON from an ArcGIS REST query endpoint with error handling."""
-    response = requests.get(url, params=params, headers=HEADERS, timeout=90)
-    response.raise_for_status()
+def fetch_arcgis_geojson(
+    url: str,
+    params: Optional[dict] = None,
+    *,
+    timeout: int = 180,
+    retries: int = 2,
+) -> gpd.GeoDataFrame:
+    """Fetch GeoJSON from an ArcGIS REST query endpoint with CRS + topology gates."""
+    last_exc: Optional[Exception] = None
+    payload = None
+    for attempt in range(retries + 1):
+        try:
+            response = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
+            response.raise_for_status()
+            payload = response.json()
+            break
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
+            last_exc = exc
+            # Retry transient gateway / server errors from county layers
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            retryable = isinstance(exc, (requests.Timeout, requests.ConnectionError)) or (
+                status is not None and status >= 500
+            )
+            if (not retryable) or attempt >= retries:
+                raise
+            continue
+    else:
+        raise last_exc or RuntimeError(f"Failed to fetch {url}")
 
-    payload = response.json()
     if isinstance(payload, dict) and "error" in payload:
         raise RuntimeError(f"ArcGIS error from {url}: {payload['error']}")
 
     if isinstance(payload, dict) and not payload.get("features"):
         return gpd.GeoDataFrame(geometry=[], crs=WGS84)
 
-    return gpd.GeoDataFrame.from_features(payload, crs=WGS84)
+    raw = gpd.GeoDataFrame.from_features(payload, crs=WGS84)
+    return prepare_layer(
+        raw,
+        WGS84,
+        layer_name=url.rsplit("/", 2)[-2] if "/" in url else "arcgis_layer",
+        assume_crs_if_missing=WGS84,
+    )
+
+
+_PARQUET_STEM = None  # use parquet_stem() from regions_loader
+
+
+def _outputs_dir() -> Path:
+    here = Path(__file__).resolve().parent
+    for candidate in (here / "outputs", Path.cwd() / "outputs", Path("/app/outputs")):
+        if candidate.is_dir():
+            return candidate
+    return here / "outputs"
+
+
+def _local_parcels_in_bounds(
+    region_id: str,
+    bounds: Bounds,
+    limit: int = 400,
+    city: Optional[str] = None,
+) -> gpd.GeoDataFrame:
+    """
+    Fallback when county ArcGIS REST is down: clip pre-scored GeoParquet tiles.
+    Geometries are enough to re-run flood/fault scoring in the live app.
+    """
+    stem = parquet_stem(region_id)
+    path = _outputs_dir() / f"{stem}.parquet"
+    if not path.exists():
+        return gpd.GeoDataFrame(geometry=[], crs=WGS84)
+
+    gdf = gpd.read_parquet(path)
+    if gdf.crs is None:
+        gdf = gdf.set_crs(WGS84)
+    elif str(gdf.crs).upper() not in {WGS84, "EPSG:4326"}:
+        gdf = gdf.to_crs(WGS84)
+
+    minx, miny, maxx, maxy = bounds
+    try:
+        hit = gdf.cx[minx:maxx, miny:maxy].copy()
+    except Exception:
+        return gpd.GeoDataFrame(geometry=[], crs=WGS84)
+
+    if city and str(city).strip() and "CITY" in hit.columns:
+        hit = hit[hit["CITY"].astype(str).str.upper() == str(city).strip().upper()]
+
+    if hit.empty:
+        return gpd.GeoDataFrame(geometry=[], crs=WGS84)
+
+    # Ensure schema fields the scorer expects
+    if "FullAddress" not in hit.columns and "SITUS_ADDRESS" in hit.columns:
+        hit["FullAddress"] = hit["SITUS_ADDRESS"]
+    for col in ("STREETNUM", "STREETDIR", "STREET", "CITY", "FullAddress"):
+        if col not in hit.columns:
+            hit[col] = None
+
+    hit["COUNTY"] = get_region(region_id).get("name", region_id)
+    hit["REGION_ID"] = region_id
+    return hit.head(max(1, int(limit))).copy()
 
 
 def _escape_sql(value: str) -> str:
     return value.replace("'", "''")
 
 
+def _combine_where(*parts: Optional[str]) -> str:
+    clauses = [p.strip() for p in parts if p and str(p).strip() and str(p).strip() != "1=1"]
+    if not clauses:
+        return "1=1"
+    # Keep explicit 1=1 only if alone
+    return " AND ".join(f"({c})" for c in clauses)
+
+
+def normalize_parcels(gdf: gpd.GeoDataFrame, region_id: str) -> gpd.GeoDataFrame:
+    """Remap county-specific fields into the shared engine schema."""
+    if gdf is None or gdf.empty:
+        return gpd.GeoDataFrame(geometry=[], crs=WGS84)
+
+    region = get_region(region_id)
+    fmap = region.get("parcels", {}).get("field_map") or {}
+    out = gdf.copy()
+
+    def _src(logical: str) -> Optional[str]:
+        v = fmap.get(logical)
+        return str(v) if v else None
+
+    for logical in ("APN", "STREETNUM", "STREETDIR", "STREET", "CITY", "FullAddress"):
+        src = _src(logical)
+        if src and src in out.columns:
+            out[logical] = out[src]
+        elif logical not in out.columns:
+            out[logical] = None
+
+    out["COUNTY"] = region.get("name", region_id)
+    out["REGION_ID"] = region["id"]
+
+    # Build FullAddress if missing
+    if out["FullAddress"].isna().all() or (
+        out["FullAddress"].astype(str).str.strip().isin(["", "None", "nan"]).all()
+    ):
+        parts = []
+        for col in ("STREETNUM", "STREETDIR", "STREET", "CITY"):
+            if col in out.columns:
+                parts.append(out[col].astype(str).replace({"None": "", "nan": ""}))
+        if parts:
+            addr = parts[0]
+            for p in parts[1:]:
+                addr = addr.str.strip() + " " + p.str.strip()
+            out["FullAddress"] = addr.str.replace(r"\s+", " ", regex=True).str.strip()
+
+    return out
+
+
 def query_parcels_by_search(
     apn: Optional[str] = None,
     street: Optional[str] = None,
-    city: str = "RENO",
+    city: Optional[str] = None,
     limit: int = 25,
+    region: Optional[str] = None,
 ) -> gpd.GeoDataFrame:
-    """Query Washoe OpenData parcels by APN and/or street name."""
-    clauses = []
-    if apn and apn.strip():
-        clauses.append(f"APN LIKE '%{_escape_sql(apn.strip())}%'")
-    if street and street.strip():
-        street_clean = _escape_sql(street.strip().upper())
-        clauses.append(f"STREET LIKE '%{street_clean}%'")
-    if city and city.strip():
-        clauses.append(f"CITY = '{_escape_sql(city.strip().upper())}'")
+    """Query parcels by APN and/or street for a configured region."""
+    from parcel_lookup import lookup_parcels
 
-    if not clauses:
+    region_id = (region or default_region_id()).strip().lower()
+    term = (apn or "").strip() or (street or "").strip()
+    if not term:
         raise ValueError("Provide an APN and/or street search term.")
 
-    where = " AND ".join(clauses)
-    return fetch_arcgis_geojson(
-        WASHOE_PARCELS_URL,
-        params={
-            "where": where,
-            "outFields": PARCEL_OUT_FIELDS,
-            "outSR": "4326",
-            "f": "geojson",
-            "resultRecordCount": str(limit),
-        },
+    fc = lookup_parcels(term, region=region_id, city=city, limit=limit)
+    feats = fc.get("features") or []
+    if not feats:
+        return gpd.GeoDataFrame(geometry=[], crs=WGS84)
+    raw = gpd.GeoDataFrame.from_features(fc, crs=WGS84)
+    return prepare_layer(
+        raw, WGS84, layer_name=f"{region_id}_lookup", assume_crs_if_missing=WGS84
     )
 
 
@@ -150,13 +290,24 @@ def query_parcels_in_envelope(
     limit: int = 400,
     city: Optional[str] = None,
     offset: int = 0,
+    region: Optional[str] = None,
 ) -> gpd.GeoDataFrame:
-    """Query parcels intersecting a WGS84 envelope (neighborhood expansion)."""
+    """Query parcels intersecting a WGS84 envelope for a configured region."""
+    region_id = (region or default_region_id()).strip().lower()
+    region_cfg = get_region(region_id)
+    parcels_cfg = region_cfg["parcels"]
+    search = parcels_cfg.get("search") or {}
+    city_field = search.get("city_field")
+
     minx, miny, maxx, maxy = bounds
     envelope = f"{minx},{miny},{maxx},{maxy}"
-    where = "1=1"
-    if city and city.strip():
-        where = f"CITY = '{_escape_sql(city.strip().upper())}'"
+
+    extra = None
+    if city and str(city).strip() and city_field:
+        extra = f"UPPER({city_field}) = '{_escape_sql(str(city).strip().upper())}'"
+
+    where = _combine_where(parcels_cfg.get("base_where"), extra)
+    page = min(int(limit), int(parcels_cfg.get("max_record_count") or 1000))
 
     params = {
         "where": where,
@@ -164,14 +315,30 @@ def query_parcels_in_envelope(
         "geometryType": "esriGeometryEnvelope",
         "inSR": "4326",
         "spatialRel": "esriSpatialRelIntersects",
-        "outFields": PARCEL_OUT_FIELDS,
+        "outFields": parcels_cfg.get("out_fields", "*"),
         "outSR": "4326",
         "f": "geojson",
-        "resultRecordCount": str(limit),
+        "resultRecordCount": str(page),
     }
     if offset:
         params["resultOffset"] = str(offset)
-    return fetch_arcgis_geojson(WASHOE_PARCELS_URL, params=params)
+
+    try:
+        raw = fetch_arcgis_geojson(parcels_cfg["url"], params=params)
+        if raw is not None and not raw.empty:
+            return normalize_parcels(raw, region_id)
+    except Exception:
+        # NDWR / county layers occasionally return HTTP 500 — use local tiles.
+        pass
+
+    # Offset pages are not meaningful for local parquet; only use on first page.
+    if offset:
+        return gpd.GeoDataFrame(geometry=[], crs=WGS84)
+
+    local = _local_parcels_in_bounds(region_id, bounds, limit=page, city=city)
+    if not local.empty:
+        return normalize_parcels(local, region_id)
+    return gpd.GeoDataFrame(geometry=[], crs=WGS84)
 
 
 def _iter_grid_cells(bounds: Bounds, rows: int, cols: int):
@@ -195,6 +362,7 @@ def query_parcels_covering_area(
     grid_rows: int = 3,
     grid_cols: int = 3,
     page_size: int = 1000,
+    region: Optional[str] = None,
 ) -> gpd.GeoDataFrame:
     """
     Pull parcels across a large area with spatial coverage.
@@ -202,8 +370,22 @@ def query_parcels_covering_area(
     A single envelope query returns an arbitrary first N features (often one
     corner of the city). Grid cells + pagination spread coverage across the map.
     """
+    region_id = (region or default_region_id()).strip().lower()
+    region_cfg = get_region(region_id)
+    max_page = int(region_cfg["parcels"].get("max_record_count") or 1000)
+    parcels_url = str((region_cfg.get("parcels") or {}).get("url") or "")
+
     max_parcels = max(100, int(max_parcels))
-    page_size = min(1000, max(100, int(page_size)))
+    page_size = min(max_page, max(100, int(page_size)))
+
+    # Statewide NDWR layer is often 500/gateway — use local county parquet when present.
+    if "arcgis.water.nv.gov" in parcels_url:
+        local = _local_parcels_in_bounds(
+            region_id, bounds, limit=max_parcels, city=city
+        )
+        if not local.empty:
+            return normalize_parcels(local, region_id)
+
     per_cell = max(page_size // max(1, grid_rows * grid_cols), 150)
     frames = []
     seen = set()
@@ -213,7 +395,10 @@ def query_parcels_covering_area(
             break
         remaining = max_parcels - len(seen)
         chunk = query_parcels_in_envelope(
-            cell, limit=min(per_cell, remaining, page_size), city=city
+            cell,
+            limit=min(per_cell, remaining, page_size),
+            city=city,
+            region=region_id,
         )
         if chunk.empty:
             continue
@@ -222,7 +407,6 @@ def query_parcels_covering_area(
             seen.update(chunk["APN"].astype(str).tolist())
         frames.append(chunk)
 
-    # Extra pagination pages on full bounds if still under cap
     offset = 0
     while len(seen) < max_parcels and offset < max_parcels:
         remaining = max_parcels - len(seen)
@@ -231,6 +415,7 @@ def query_parcels_covering_area(
             limit=min(page_size, remaining),
             city=city,
             offset=offset,
+            region=region_id,
         )
         if page.empty:
             break
@@ -258,22 +443,30 @@ def query_parcels_covering_area(
 
 def run_area_analysis(
     bounds: Bounds,
-    city: str = "RENO",
+    city: Optional[str] = None,
     max_parcels: int = 2000,
+    region: Optional[str] = None,
 ) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """
     Score a large geographic area (city district), not a single street.
 
     Returns (empty_matches, scored_parcels, fema, faults).
     """
+    region_id = (region or default_region_id()).strip().lower()
+
     parcels = query_parcels_covering_area(
-        bounds, city=city, max_parcels=max_parcels, grid_rows=4, grid_cols=4
+        bounds,
+        city=city,
+        max_parcels=max_parcels,
+        grid_rows=4,
+        grid_cols=4,
+        region=region_id,
     )
     empty_matches = gpd.GeoDataFrame(geometry=[], crs=WGS84)
     if parcels.empty:
         return empty_matches, empty_matches, empty_matches, empty_matches
 
-    envelope = bounds_to_envelope(bounds)
+    envelope = bounds_to_envelope(hazard_query_bounds(bounds))
     fema = fetch_flood_zones(envelope)
     faults = fetch_fault_lines(envelope)
     scored = score_parcels(parcels, fema, faults)
@@ -289,10 +482,19 @@ def meters_to_deg_pad(radius_m: float, lat: float) -> Tuple[float, float]:
 
 def expand_bounds(bounds: Bounds, radius_m: float) -> Bounds:
     """Expand a WGS84 bounding box by radius_m in each direction."""
-    minx, miny, maxx, maxy = bounds
-    mid_lat = (miny + maxy) / 2.0
-    lon_pad, lat_pad = meters_to_deg_pad(radius_m, mid_lat)
-    return (minx - lon_pad, miny - lat_pad, maxx + lon_pad, maxy + lat_pad)
+    return edge_buffered_bounds(bounds, buffer_m=radius_m)
+
+
+def hazard_query_bounds(
+    bounds: Bounds,
+    buffer_m: float = EDGE_BUFFER_METERS,
+) -> Bounds:
+    """
+    Expand the study window before fetching flood/fault layers.
+
+    Prevents border truncation when hazards cross the administrative edge.
+    """
+    return edge_buffered_bounds(bounds, buffer_m=buffer_m)
 
 
 def bounds_to_envelope(bounds: Bounds) -> str:
@@ -333,14 +535,6 @@ def fetch_fault_lines(envelope: str, limit: int = 2000) -> gpd.GeoDataFrame:
             "resultRecordCount": str(limit),
         },
     )
-
-
-def sanitize_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    if gdf is None or gdf.empty:
-        return gpd.GeoDataFrame(geometry=[], crs=gdf.crs if gdf is not None else WGS84)
-    gdf = gdf[gdf.geometry.notnull() & ~gdf.geometry.is_empty].copy()
-    gdf["geometry"] = gdf.geometry.make_valid()
-    return gdf
 
 
 # =========================================================================
@@ -554,12 +748,16 @@ def prepare_hazard_layers(
     fema_zones: gpd.GeoDataFrame,
     fault_lines: gpd.GeoDataFrame,
 ) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
-    """Reproject, clean, and attach flood subscores for analysis CRS."""
-    fema = sanitize_geometries(fema_zones)
-    faults = sanitize_geometries(fault_lines)
+    """CRS gate + topology repair, then attach flood subscores in analysis CRS."""
+    fema = prepare_layer(
+        fema_zones, TARGET_CRS, layer_name="fema_flood", assume_crs_if_missing=WGS84
+    )
+    faults = prepare_layer(
+        fault_lines, TARGET_CRS, layer_name="usgs_faults", assume_crs_if_missing=WGS84
+    )
 
     if not fema.empty:
-        fema = fema.to_crs(TARGET_CRS)
+        fema = fema.copy()
         fema["flood_subscore"] = fema.apply(map_flood_risk, axis=1)
     else:
         fema = gpd.GeoDataFrame(
@@ -568,9 +766,7 @@ def prepare_hazard_layers(
             crs=TARGET_CRS,
         )
 
-    if not faults.empty:
-        faults = faults.to_crs(TARGET_CRS)
-    else:
+    if faults.empty:
         faults = gpd.GeoDataFrame(geometry=[], crs=TARGET_CRS)
 
     return fema, faults
@@ -596,7 +792,22 @@ def score_parcels(
     w_flood = WEIGHT_FLOOD if flood_weight is None else float(flood_weight)
     w_fault = WEIGHT_FAULT if fault_weight is None else float(fault_weight)
 
-    parcels = sanitize_geometries(parcels).to_crs(TARGET_CRS).copy()
+    parcels = prepare_layer(
+        parcels, TARGET_CRS, layer_name="parcels", assume_crs_if_missing=WGS84
+    ).copy()
+    # Drop prior score columns (e.g. local parquet fallback) so overlays recompute cleanly
+    for col in (
+        "flood_subscore",
+        "fault_dist_meters",
+        "fault_subscore",
+        "composite_risk_score",
+        "risk_category",
+        "FLD_ZONE",
+        "index_right",
+    ):
+        if col in parcels.columns:
+            parcels = parcels.drop(columns=[col])
+
     fema, faults = prepare_hazard_layers(fema_zones, fault_lines)
 
     parcels["SITUS_ADDRESS"] = parcels.apply(build_situs_address, axis=1)
@@ -633,7 +844,7 @@ def score_parcels(
     ).round(2)
     parcels["risk_category"] = parcels["composite_risk_score"].apply(categorize_risk)
 
-    return parcels.to_crs(WGS84)
+    return ensure_crs(parcels, WGS84, layer_name="scored_parcels", assume_crs_if_missing=TARGET_CRS)
 
 
 def envelope_from_parcel_buffers(
@@ -656,18 +867,21 @@ def envelope_from_parcel_buffers(
 def run_neighborhood_analysis(
     apn: Optional[str] = None,
     street: Optional[str] = None,
-    city: str = "RENO",
+    city: Optional[str] = None,
     radius_m: float = 1000.0,
     match_limit: int = 25,
     neighborhood_limit: int = 400,
+    region: Optional[str] = None,
 ) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """
     End-to-end lookup: find matches, expand neighborhood, fetch hazards, score.
 
     Returns (matches, scored_neighborhood, fema_wgs84, faults_wgs84).
     """
+    region_id = (region or default_region_id()).strip().lower()
+
     matches = query_parcels_by_search(
-        apn=apn, street=street, city=city, limit=match_limit
+        apn=apn, street=street, city=city, limit=match_limit, region=region_id
     )
     if matches.empty:
         empty = gpd.GeoDataFrame(geometry=[], crs=WGS84)
@@ -686,10 +900,15 @@ def run_neighborhood_analysis(
     )
 
     neighborhood_bounds = envelope_from_parcel_buffers(seed_matches, radius_m)
-    envelope = bounds_to_envelope(neighborhood_bounds)
+    # Parcels: study window. Hazards: edge-buffered so border features aren't cut off.
+    hazard_bounds = hazard_query_bounds(neighborhood_bounds)
+    hazard_envelope = bounds_to_envelope(hazard_bounds)
 
     neighborhood = query_parcels_in_envelope(
-        neighborhood_bounds, limit=neighborhood_limit, city=city
+        neighborhood_bounds,
+        limit=neighborhood_limit,
+        city=city,
+        region=region_id,
     )
     if neighborhood.empty:
         neighborhood = seed_matches.copy()
@@ -701,8 +920,8 @@ def run_neighborhood_analysis(
             neighborhood = pd.concat([neighborhood, missing], ignore_index=True)
             neighborhood = gpd.GeoDataFrame(neighborhood, geometry="geometry", crs=WGS84)
 
-    fema = fetch_flood_zones(envelope)
-    faults = fetch_fault_lines(envelope)
+    fema = fetch_flood_zones(hazard_envelope)
+    faults = fetch_fault_lines(hazard_envelope)
     scored = score_parcels(neighborhood, fema, faults)
     return seed_matches, scored, fema, faults
 
@@ -823,7 +1042,7 @@ def build_risk_map(
 
     folium.GeoJson(
         parcels,
-        name="Washoe Parcel Composite Risk",
+        name="Parcel Composite Risk",
         style_function=style_function,
         highlight_function=highlight_function,
         smooth_factor=0.5,

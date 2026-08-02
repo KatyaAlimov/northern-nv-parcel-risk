@@ -1,25 +1,20 @@
 """
 ESRI STEP 5: Build interactive GIS application (batch / demo mode).
 
-Loads scored parcels from Step 4 and writes a standalone Folium/Leaflet HTML map.
+Loads scored parcels (GeoParquet preferred) and writes a Folium/Leaflet HTML map.
 """
 
 import os
 
-import geopandas as gpd
-
-from risk_engine import build_risk_map
+from risk_engine import build_risk_map, read_geodata
 
 print("=========================================================")
 print(" ESRI STEP 5: BUILD INTERACTIVE GIS APPLICATION")
 print("=========================================================\n")
 
-input_path = "outputs/analyzed_parcels.geojson"
-if not os.path.exists(input_path):
-    input_path = "analyzed_parcels.geojson"
-
-print(f"[1/3] Loading analyzed GeoJSON dataset from '{input_path}'...")
-parcels = gpd.read_file(input_path)
+input_stem = "outputs/analyzed_parcels"
+print(f"[1/3] Loading analyzed dataset from '{input_stem}' (.parquet / .fgb / .geojson)...")
+parcels = read_geodata(input_stem, layer_name="analyzed_parcels")
 if parcels.empty:
     raise SystemExit("No parcels found. Run 02_run_analysis.py first.")
 

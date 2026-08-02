@@ -1,4 +1,7 @@
-# Washoe County parcel risk scoring configuration
+# Nevada Parcel Risk scoring configuration
+#
+# Weights and λ are placeholders until calibrated with local experts / hazard plans.
+# The pipeline is multi-county (see config/regions.yaml); this file is shared scoring.
 # ---------------------------------------------------------------------------
 # Edit this file to change AHP weights, fault decay, flood tiers, and risk
 # thresholds. Citations document the *methods and regulatory concepts*;
@@ -7,8 +10,10 @@
 # ---------------------------------------------------------------------------
 
 meta:
-  version: "1.0"
-  jurisdiction: "Washoe County / City of Reno, Nevada"
+  version: "1.1"
+  jurisdiction: "Nevada (multi-county parcel risk demo)"
+  purpose: >
+    Transparent flood + fault composite scoring for portfolio / developer-analyst demos.
   disclaimer: >
     Prototype decision-support scores only. Not an official FEMA flood
     determination, geologic hazard report, or insurance rating.

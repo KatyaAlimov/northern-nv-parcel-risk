@@ -1,6 +1,8 @@
-# Washoe County Parcel Risk Pipeline
+# Nevada Parcel Risk Pipeline
 
-Score Reno / Washoe parcels for **flood** and **fault** risk, then view results in a lookup app or a city-wide map.
+Multi-county flood + fault scoring for Nevada parcels. Switch counties in the app
+or city map — 16 Nevada counties (Washoe, Storey, Lyon, Carson City, Douglas, Churchill, Pershing, Humboldt, Elko, Lander, Mineral, Nye, White Pine, Eureka, Lincoln, Esmeralda)
+(add more in `config/regions.yaml`).
 
 > Demo / portfolio project only — not an official flood, geologic, or insurance determination.
 
@@ -10,7 +12,8 @@ Score Reno / Washoe parcels for **flood** and **fault** risk, then view results 
 
 ### Fastest path (Docker)
 
-You need Docker Desktop running. City tiles should already be in `outputs/reno_risk.pmtiles` (if not, see [Build city tiles](#build-city-tiles-once) below).
+You need Docker Desktop running. County tiles should already be in `outputs/*_risk.pmtiles`
+(if not, see [Build city tiles](#build-city-tiles-once) below).
 
 ```bash
 cd wash_county_risk_pipeline
@@ -21,8 +24,8 @@ Then open:
 
 | What | Link |
 |---|---|
-| **Lookup app** (search street / APN / district) | http://localhost:8501 |
-| **City map** (all of Reno) | http://localhost:8080/city_map.html |
+| **Lookup app** (street / APN / district) | http://localhost:8501 |
+| **County map** (pick county in the UI) | http://localhost:8080/city_map.html |
 
 Stop everything with `Ctrl+C`, or in another terminal: `docker compose down`.
 
@@ -46,19 +49,17 @@ python3 05_serve_city_map.py
 2. Click **Analyze risk** (wait ~10–40 seconds)
 3. Read the map, risk table, and download CSV / GeoJSON if you want
 
-### Build city tiles (once)
-
-Only needed if `outputs/reno_risk.pmtiles` is missing. Takes a while (full Reno ≈ 93k parcels).
+### Build city tiles (once per region)
 
 ```bash
-brew install tippecanoe          # macOS
-python3 04_build_reno_tiles.py
-```
-
-Smaller test build:
-
-```bash
-python3 04_build_reno_tiles.py --max-parcels 3000
+brew install tippecanoe
+python3 04_build_reno_tiles.py --region washoe      # → outputs/reno_risk.pmtiles
+python3 04_build_reno_tiles.py --region storey
+python3 04_build_reno_tiles.py --region lyon
+python3 04_build_reno_tiles.py --region carson
+python3 04_build_reno_tiles.py --region douglas
+python3 04_build_reno_tiles.py --region churchill
+# Optional: --max-parcels 5000 for a quicker sample build
 ```
 
 ### Check scoring math
@@ -81,7 +82,7 @@ python3 validation_report.py
 3. Combines those into one **High / Moderate / Low** risk score  
 4. Shows results in two places:
    - **App** — live lookup for a street, APN, or district  
-   - **City map** — pre-built map of all Reno parcels  
+   - **City map** — pre-built PMTiles per county (multi-county Nevada coverage)  
 
 Same scoring rules for both. Rules live in `config/scoring_config.yaml` so you can change weights without rewriting code.
 
@@ -132,6 +133,9 @@ Plain English:
 Technical notes:
 
 - Distances use **UTM Zone 11N** (meters); maps use **WGS84**  
+- After every raw read: **CRS gate** + **`make_valid`** topology repair ([`spatial_ops.py`](spatial_ops.py))  
+- Hazard queries use a **5 km edge buffer** beyond the study window so border floods/faults are not truncated  
+- Batch outputs prefer **GeoParquet** / **FlatGeobuf** (GeoJSONL only for tippecanoe tiles)  
 - Weights come from an **AHP** pairwise matrix in the config file  
 - Fault decay and flood zone lists are also in that config  
 
@@ -142,7 +146,7 @@ Technical notes:
 | Need | Tool |
 |---|---|
 | Language | Python, HTML/JS |
-| GIS analysis | GeoPandas, Shapely |
+| GIS analysis | GeoPandas, Shapely (`make_valid`), GeoParquet / FlatGeobuf |
 | Live data | ArcGIS REST (Washoe, Esri flood, USGS) |
 | Lookup app | Streamlit + Folium |
 | City map | MapLibre + tippecanoe / PMTiles |

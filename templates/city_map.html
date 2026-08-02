@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Reno City-Wide Parcel Risk (PMTiles)</title>
+  <title>NV Parcel Risk (PMTiles)</title>
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
@@ -14,6 +14,8 @@
       position: absolute; z-index: 2; top: 12px; left: 12px;
       background: rgba(255,255,255,0.95); padding: 12px 14px; border-radius: 8px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 340px; font-size: 13px;
+      max-height: calc(100vh - 24px); overflow-y: auto;
+      pointer-events: auto;
     }
     .panel h1 { margin: 0 0 6px; font-size: 16px; }
     .legend i {
@@ -21,7 +23,7 @@
       vertical-align: middle;
     }
     .search-row { display: flex; gap: 6px; margin-top: 10px; }
-    .search-row input {
+    .search-row input, .search-row select {
       flex: 1; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
     }
     .search-row button, .basemap-btns button, .action-row button {
@@ -38,19 +40,27 @@
     .status.error { color: #b00020; }
     .hint { margin-top: 8px; color: #555; font-size: 12px; line-height: 1.35; }
     .maplibregl-popup-content { font-size: 13px; min-width: 220px; }
+    .maplibregl-ctrl-top-right { top: 12px; right: 12px; }
   </style>
 </head>
 <body>
   <div class="panel">
-    <h1>Reno Parcel Composite Risk</h1>
-    <div>City-wide tiles always load. Use lookup to zoom to a street/APN.</div>
+    <h1 id="panel-title">Nevada Parcel Risk</h1>
+    <div>Multi-county flood + fault scoring · switch county below · scroll to zoom.</div>
+
+    <div class="search-row" style="margin-top:8px;">
+      <label for="region-select" style="align-self:center;">County</label>
+      <select id="region-select">
+        <option value="">Loading counties…</option>
+      </select>
+    </div>
 
     <div class="search-row">
-      <input id="search-input" type="text" placeholder="Street or APN (e.g. RIVERSIDE)" />
+      <input id="search-input" type="text" placeholder="Street or APN" />
       <button type="button" class="primary" id="btn-search">Lookup</button>
     </div>
     <div class="action-row">
-      <button type="button" id="btn-all">Show all Reno</button>
+      <button type="button" id="btn-all">Show full county</button>
       <button type="button" id="btn-clear">Clear highlight</button>
     </div>
     <div class="status" id="status"></div>
@@ -66,9 +76,7 @@
     </div>
     <div class="hint">
       Composite = <b>60% flood (AHP) + 40% fault (AHP)</b>.
-      Fault score uses continuous decay (Alquist-Priolo): high near the fault,
-      falling smoothly with distance. A parcel can be
-      <b>MODERATE with flood score 0</b> if it is close to a fault line.
+      Place names stay on top of parcels. Use the +/- control (top-right) or mouse wheel to zoom.
     </div>
   </div>
   <div id="map"></div>
@@ -77,24 +85,11 @@
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", protocol.tile);
 
-    const tilesUrl = `pmtiles://${window.location.origin}/reno_risk.pmtiles`;
-    const CITY_CENTER = [-119.81, 39.53];
-    const CITY_ZOOM = 11;
     const statusEl = () => document.getElementById("status");
-
     function setStatus(msg, isError) {
       const el = statusEl();
       el.textContent = msg || "";
       el.className = "status" + (isError ? " error" : "");
-    }
-
-    function faultScoreFromDistance(dist) {
-      const d = Number(dist);
-      if (!Number.isFinite(d)) return null;
-      if (d < 100) return 100;
-      if (d < 500) return 75;
-      if (d < 1000) return 25;
-      return 0;
     }
 
     function fmt(n, digits) {
@@ -104,96 +99,163 @@
     }
 
     function popupHtml(p) {
-      const flood = Number(p.flood_subscore);
-      const faultDist = Number(p.fault_dist_meters);
-      const faultScore = p.fault_subscore != null
-        ? Number(p.fault_subscore)
-        : faultScoreFromDistance(faultDist);
-      const composite = Number(p.composite_risk_score);
       return `
-        <strong>${p.SITUS_ADDRESS || "Unknown address"}</strong><br/>
+        <strong>${p.SITUS_ADDRESS || p.address || "Unknown address"}</strong><br/>
         <b>APN:</b> ${p.APN || "n/a"}<br/>
         <hr style="margin:6px 0;border:none;border-top:1px solid #ddd;"/>
-        <b>Flood sub-score:</b> ${fmt(flood, 0)} / 100<br/>
-        <b>Fault distance:</b> ${fmt(faultDist, 1)} m<br/>
-        <b>Fault sub-score:</b> ${fmt(faultScore, 0)} / 100<br/>
+        <b>Flood sub-score:</b> ${fmt(p.flood_subscore, 0)} / 100<br/>
+        <b>Fault distance:</b> ${fmt(p.fault_dist_meters, 1)} m<br/>
+        <b>Fault sub-score:</b> ${fmt(p.fault_subscore, 0)} / 100<br/>
         <hr style="margin:6px 0;border:none;border-top:1px solid #ddd;"/>
-        <b>Composite (60% flood + 40% fault):</b> ${fmt(composite, 1)}<br/>
+        <b>Composite:</b> ${fmt(p.composite_risk_score, 1)}<br/>
         <b>Risk tier:</b> ${p.risk_category || "n/a"}
       `;
     }
 
-    const STYLE_LIGHT = {
-      version: 8,
-      sources: {
-        carto: {
-          type: "raster",
-          tiles: [
-            "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png",
-            "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}@2x.png"
-          ],
-          tileSize: 256,
-          attribution: "&copy; OpenStreetMap &copy; CARTO"
-        },
-        parcels: {
-          type: "vector",
-          url: tilesUrl,
-          attribution: "Washoe County parcels · FEMA/Esri flood · USGS faults",
-          minzoom: 10,
-          maxzoom: 16
-        }
-      },
-      layers: [
-        { id: "carto", type: "raster", source: "carto" },
-        {
-          id: "parcels-fill",
-          type: "fill",
-          source: "parcels",
-          "source-layer": "parcels",
-          minzoom: 10,
-          paint: {
-            "fill-color": [
-              "match", ["get", "risk_category"],
-              "HIGH", "#d9534f",
-              "MODERATE", "#f0ad4e",
-              "LOW", "#5cb85c",
-              "#5cb85c"
-            ],
-            "fill-opacity": 0.55
-          }
-        },
-        {
-          id: "parcels-outline",
-          type: "line",
-          source: "parcels",
-          "source-layer": "parcels",
-          minzoom: 12,
-          paint: {
-            "line-color": "#222",
-            "line-width": [
-              "interpolate", ["linear"], ["zoom"],
-              12, 0.1,
-              16, 0.8
-            ]
-          }
-        }
-      ]
-    };
+    async function bootstrap() {
+      let catalog;
+      try {
+        const resp = await fetch("/api/regions");
+        if (!resp.ok) throw new Error(`regions ${resp.status}`);
+        catalog = await resp.json();
+        if (catalog.error) throw new Error(catalog.error);
+      } catch (err) {
+        setStatus("Could not load county list: " + (err.message || err), true);
+        return;
+      }
 
+      const ALL = catalog.regions || {};
+      // Only offer counties with a real PMTiles archive (missing files looked blank / wrong magic).
+      const REGIONS = Object.fromEntries(
+        Object.entries(ALL).filter(([, r]) => r && r.tilesAvailable !== false)
+      );
+      if (!Object.keys(REGIONS).length) {
+        setStatus("No county tile archives found under /outputs.", true);
+        return;
+      }
+      const params = new URLSearchParams(window.location.search);
+      let regionKey = (params.get("region") || catalog.default || "washoe").toLowerCase();
+      if (!REGIONS[regionKey]) {
+        const requested = ALL[regionKey];
+        regionKey = (REGIONS[catalog.default] && catalog.default) || Object.keys(REGIONS)[0];
+        if (requested) {
+          setStatus(
+            `${requested.name || params.get("region")} tiles are not built yet — showing ${REGIONS[regionKey].name}.`,
+            true
+          );
+        }
+      }
+      const region = REGIONS[regionKey];
+      const tilesUrl = `pmtiles://${window.location.origin}/${region.file}`;
+
+      const select = document.getElementById("region-select");
+      select.innerHTML = "";
+      Object.keys(REGIONS).forEach((id) => {
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = REGIONS[id].name || id;
+        select.appendChild(opt);
+      });
+      select.value = regionKey;
+      document.getElementById("panel-title").textContent = region.title;
+      document.getElementById("search-input").placeholder =
+        region.placeholder || "Street or APN";
+      select.onchange = (e) => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("region", e.target.value);
+        window.location.href = url.toString();
+      };
+
+      initMap(REGIONS, regionKey, region, tilesUrl);
+    }
+
+    function initMap(REGIONS, regionKey, region, tilesUrl) {
+    // OpenFreeMap liberty = streets + place labels (towns, roads)
     const map = new maplibregl.Map({
       container: "map",
-      style: STYLE_LIGHT,
-      center: CITY_CENTER,
-      zoom: CITY_ZOOM,
-      minZoom: 10,
-      maxZoom: 18
+      style: "https://tiles.openfreemap.org/styles/liberty",
+      center: region.center,
+      zoom: Math.max(6, Number(region.zoom) || 10),
+      minZoom: 6,
+      maxZoom: 18,
+      dragRotate: false,
+      pitchWithRotate: false
+    });
+    // Expose for demos / automated walkthroughs
+    window.map = map;
+    window.MAP_REGION = region;
+
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 160 }), "bottom-left");
+    map.scrollZoom.enable();
+    map.dragPan.enable();
+    map.doubleClickZoom.enable();
+    map.touchZoomRotate.enable();
+    map.keyboard.enable();
+
+    map.on("error", (e) => {
+      console.error("MapLibre error:", e && e.error);
+      setStatus((e && e.error && e.error.message) || "Map error", true);
     });
 
-    map.on("error", (e) => console.error("MapLibre error:", e && e.error));
-    map.addControl(new maplibregl.NavigationControl(), "top-right");
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 160 }));
+    function firstSymbolLayerId() {
+      const layers = map.getStyle().layers || [];
+      for (const layer of layers) {
+        if (layer.type === "symbol") return layer.id;
+      }
+      return undefined;
+    }
 
-    map.on("load", () => {
+    function addParcelLayers() {
+      if (map.getSource("parcels")) return;
+      map.addSource("parcels", {
+        type: "vector",
+        url: tilesUrl,
+        attribution: "County parcels · FEMA/Esri flood · USGS faults",
+        minzoom: 6,
+        maxzoom: 16
+      });
+
+      // Insert under labels so place names stay readable
+      const beforeId = firstSymbolLayerId();
+      map.addLayer({
+        id: "parcels-fill",
+        type: "fill",
+        source: "parcels",
+        "source-layer": "parcels",
+        minzoom: 6,
+        paint: {
+          "fill-color": [
+            "match", ["get", "risk_category"],
+            "HIGH", "#d9534f",
+            "MODERATE", "#f0ad4e",
+            "LOW", "#5cb85c",
+            "#5cb85c"
+          ],
+          "fill-opacity": 0.45
+        }
+      }, beforeId);
+
+      map.addLayer({
+        id: "parcels-outline",
+        type: "line",
+        source: "parcels",
+        "source-layer": "parcels",
+        minzoom: 10,
+        paint: {
+          "line-color": "#333",
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            11, 0.15,
+            16, 0.9
+          ],
+          "line-opacity": 0.7
+        }
+      }, beforeId);
+    }
+
+    function addLookupLayers() {
+      if (map.getSource("lookup")) return;
       map.addSource("lookup", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] }
@@ -202,104 +264,168 @@
         id: "lookup-fill",
         type: "fill",
         source: "lookup",
-        paint: {
-          "fill-color": "#00e5ff",
-          "fill-opacity": 0.35
-        }
+        paint: { "fill-color": "#00e5ff", "fill-opacity": 0.4 }
       });
       map.addLayer({
         id: "lookup-outline",
         type: "line",
         source: "lookup",
-        paint: {
-          "line-color": "#00bcd4",
-          "line-width": 3
-        }
+        paint: { "line-color": "#00bcd4", "line-width": 3 }
       });
+    }
+
+    function ensureSatLayers() {
+      if (!map.getSource("sat")) {
+        map.addSource("sat", {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          ],
+          tileSize: 256,
+          maxzoom: 18,
+          attribution: "Tiles © Esri"
+        });
+      }
+      if (!map.getLayer("sat")) {
+        // Sit under parcels so risk colors remain visible
+        const before = map.getLayer("parcels-fill") ? "parcels-fill" : firstSymbolLayerId();
+        map.addLayer({
+          id: "sat",
+          type: "raster",
+          source: "sat",
+          layout: { visibility: "none" }
+        }, before);
+      }
+      // Place / road labels on top of imagery
+      if (!map.getSource("sat-labels")) {
+        map.addSource("sat-labels", {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+          ],
+          tileSize: 256,
+          maxzoom: 18,
+          attribution: "Esri"
+        });
+      }
+      if (!map.getLayer("sat-labels")) {
+        map.addLayer({
+          id: "sat-labels",
+          type: "raster",
+          source: "sat-labels",
+          layout: { visibility: "none" }
+        });
+      }
+    }
+
+    function setBasemap(mode) {
+      ensureSatLayers();
+      const streets = mode === "streets";
+      // Hide/show OpenFreeMap base layers (everything that is not our overlays)
+      const keep = new Set([
+        "parcels-fill", "parcels-outline",
+        "lookup-fill", "lookup-outline",
+        "sat", "sat-labels"
+      ]);
+      (map.getStyle().layers || []).forEach((layer) => {
+        if (keep.has(layer.id)) return;
+        if (layer.id === "sat" || layer.id === "sat-labels") return;
+        try {
+          map.setLayoutProperty(layer.id, "visibility", streets ? "visible" : "none");
+        } catch (_) { /* ignore */ }
+      });
+      map.setLayoutProperty("sat", "visibility", streets ? "none" : "visible");
+      map.setLayoutProperty("sat-labels", "visibility", streets ? "none" : "visible");
+      document.getElementById("btn-light").classList.toggle("active", streets);
+      document.getElementById("btn-sat").classList.toggle("active", !streets);
+    }
+
+    map.on("load", () => {
+      addParcelLayers();
+      addLookupLayers();
+      ensureSatLayers();
+      setBasemap("streets");
+      setStatus("Scroll to zoom · drag to pan · Streets / Satellite toggle above.");
+
+      // Non-blocking: warn if county tiles are not built yet
+      fetch(`/${region.file}`, { method: "HEAD" })
+        .then((head) => {
+          if (!head.ok) {
+            setStatus(
+              `County tiles not ready yet (${region.file}). Lookup still works; ` +
+                "map colors appear after the tile build finishes. Try Washoe / Storey / Lyon for full map color.",
+              true
+            );
+          }
+        })
+        .catch(() => { /* ignore */ });
     });
 
-    const satSource = {
-      type: "raster",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-      ],
-      tileSize: 256,
-      maxzoom: 18,
-      attribution: "Tiles © Esri"
-    };
-
-    document.getElementById("btn-light").onclick = () => {
-      if (!map.getSource("carto")) {
-        map.addSource("carto", STYLE_LIGHT.sources.carto);
-        map.addLayer({ id: "carto", type: "raster", source: "carto" }, "parcels-fill");
-      }
-      if (map.getLayer("sat")) map.removeLayer("sat");
-      if (map.getSource("sat")) map.removeSource("sat");
-      document.getElementById("btn-light").classList.add("active");
-      document.getElementById("btn-sat").classList.remove("active");
-    };
-
-    document.getElementById("btn-sat").onclick = () => {
-      if (map.getLayer("carto")) map.removeLayer("carto");
-      if (map.getSource("carto")) map.removeSource("carto");
-      if (!map.getSource("sat")) {
-        map.addSource("sat", satSource);
-        map.addLayer({ id: "sat", type: "raster", source: "sat" }, "parcels-fill");
-      }
-      document.getElementById("btn-sat").classList.add("active");
-      document.getElementById("btn-light").classList.remove("active");
-    };
+    document.getElementById("btn-light").onclick = () => setBasemap("streets");
+    document.getElementById("btn-sat").onclick = () => setBasemap("satellite");
 
     function clearLookup() {
       const src = map.getSource("lookup");
       if (src) src.setData({ type: "FeatureCollection", features: [] });
     }
 
-    function showAllReno() {
+    function showFullCounty() {
       clearLookup();
       document.getElementById("search-input").value = "";
-      map.flyTo({ center: CITY_CENTER, zoom: CITY_ZOOM });
-      setStatus("Showing all Reno parcels (city-wide tiles).");
+      const c = region.fullCenter || region.center;
+      const z = Math.max(6, Number(region.fullZoom != null ? region.fullZoom : region.zoom) || 9);
+      map.easeTo({ center: c, zoom: z, duration: 800 });
+      setStatus(`Showing ${region.title}.`);
     }
 
     async function lookupAddress() {
       const q = (document.getElementById("search-input").value || "").trim();
       if (!q) {
-        showAllReno();
+        showFullCounty();
         return;
       }
-
-      setStatus("Searching Washoe parcels…");
+      if (!map.isStyleLoaded() || !map.getSource("lookup")) {
+        setStatus("Map is still loading — try Lookup again in a second.", true);
+        return;
+      }
+      setStatus(`Searching ${region.title}…`);
       try {
-        const url = `/api/lookup?q=${encodeURIComponent(q)}&city=RENO&limit=40`;
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`Lookup failed (${resp.status})`);
-        const fc = await resp.json();
+        const qs = new URLSearchParams({
+          q,
+          region: REGIONS[regionKey] ? regionKey : "washoe",
+          limit: "40"
+        });
+        if (region.lookupCity) qs.set("city", region.lookupCity);
+        const resp = await fetch(`/api/lookup?${qs}`);
+        const text = await resp.text();
+        let fc;
+        try {
+          fc = JSON.parse(text);
+        } catch (_) {
+          throw new Error(
+            `Lookup returned non-JSON (${resp.status}). Is the API container running?`
+          );
+        }
+        if (!resp.ok || fc.error) {
+          throw new Error(fc.error || `Lookup failed (${resp.status})`);
+        }
         const features = fc.features || [];
         if (!features.length) {
           clearLookup();
-          setStatus(`No parcels found for “${q}”. Try a street name or APN.`, true);
+          setStatus(`No parcels found for “${q}”. Try another street or APN.`, true);
           return;
         }
-
         map.getSource("lookup").setData(fc);
-
         const bounds = new maplibregl.LngLatBounds();
         features.forEach((f) => {
           const g = f.geometry;
           if (!g) return;
-          if (g.type === "Polygon") {
-            g.coordinates[0].forEach((c) => bounds.extend(c));
-          } else if (g.type === "MultiPolygon") {
+          if (g.type === "Polygon") g.coordinates[0].forEach((c) => bounds.extend(c));
+          else if (g.type === "MultiPolygon") {
             g.coordinates.forEach((poly) => poly[0].forEach((c) => bounds.extend(c)));
-          } else if (g.type === "Point") {
-            bounds.extend(g.coordinates);
-          }
+          } else if (g.type === "Point") bounds.extend(g.coordinates);
         });
-
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
-        }
+        if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 16 });
         setStatus(`Found ${features.length} parcel(s) for “${q}” (cyan highlight).`);
       } catch (err) {
         console.error(err);
@@ -308,10 +434,10 @@
     }
 
     document.getElementById("btn-search").onclick = lookupAddress;
-    document.getElementById("btn-all").onclick = showAllReno;
+    document.getElementById("btn-all").onclick = showFullCounty;
     document.getElementById("btn-clear").onclick = () => {
       clearLookup();
-      setStatus("Highlight cleared. City-wide parcels still visible.");
+      setStatus("Highlight cleared.");
     };
     document.getElementById("search-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") lookupAddress();
@@ -325,19 +451,23 @@
         .setHTML(popupHtml(f.properties || {}))
         .addTo(map);
     });
-
     map.on("click", "lookup-fill", (e) => {
       const f = e.features && e.features[0];
       if (!f) return;
       const p = f.properties || {};
-      new maplibregl.Popup({ maxWidth: "280px" })
+      const html = (p.risk_category != null || p.composite_risk_score != null)
+        ? popupHtml(p)
+        : `<strong>${p.address || "Match"}</strong><br/><b>APN:</b> ${p.APN || "n/a"}`;
+      new maplibregl.Popup({ maxWidth: "300px" })
         .setLngLat(e.lngLat)
-        .setHTML(`<strong>${p.address || "Match"}</strong><br/><b>APN:</b> ${p.APN || "n/a"}`)
+        .setHTML(html)
         .addTo(map);
     });
-
     map.on("mouseenter", "parcels-fill", () => { map.getCanvas().style.cursor = "pointer"; });
     map.on("mouseleave", "parcels-fill", () => { map.getCanvas().style.cursor = ""; });
+    } // end initMap
+
+    bootstrap();
   </script>
 </body>
 </html>

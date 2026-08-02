@@ -6,7 +6,7 @@ GIS-MCDA framework:
   - FEMA NFIP flood sub-scores
   - Continuous Alquist-Priolo exponential fault distance decay
 
-Exports WGS84 GeoJSON compatible with 03_build_app.py.
+Exports GeoParquet (+ FlatGeobuf) for 03_build_app.py.
 """
 
 import os
@@ -15,10 +15,12 @@ from risk_engine import (
     DEFAULT_AHP_CRITERIA,
     DEFAULT_AHP_MATRIX,
     FAULT_DECAY_LAMBDA,
+    WGS84,
     calculate_fault_score,
     compute_ahp_weights,
     run_neighborhood_analysis,
     summary_table,
+    write_geodata,
 )
 
 # Keep in sync with 01_prepare_data.py demo defaults
@@ -32,9 +34,6 @@ print("\n=========================================================")
 print(" ESRI STEP 3 & 4: GIS-MCDA RISK ANALYSIS")
 print("=========================================================\n")
 
-# -------------------------------------------------------------------------
-# 1) AHP criteria weighting (Flood vs Fault)
-# -------------------------------------------------------------------------
 print("[1/4] Analytic Hierarchy Process (AHP) criteria weighting...")
 print("  Pairwise preference: Flood preferred 1.5× over Fault")
 print("  (regional flood recurrence frequency vs fault exposure)")
@@ -51,9 +50,6 @@ if not ahp.is_consistent():
     raise SystemExit("AHP Consistency Ratio CR >= 0.10 — revise pairwise matrix.")
 print(f"  └─ Adopted weights → Flood={flood_weight:.4f}, Fault={fault_weight:.4f}\n")
 
-# -------------------------------------------------------------------------
-# 2) Fault decay calibration (Alquist-Priolo 150 m core zone)
-# -------------------------------------------------------------------------
 print("[2/4] Fault proximity: continuous exponential distance decay")
 print(f"  Formula: fault_subscore = 100 * exp(-λ * d_meters)")
 print(f"  λ = {FAULT_DECAY_LAMBDA} (calibrated to ~80 at 150 m Alquist-Priolo boundary)")
@@ -61,10 +57,6 @@ for d in (0, 150, 500, 2000):
     print(f"  └─ d = {d:>4} m → fault_subscore = {calculate_fault_score(d):6.2f}")
 print("")
 
-# -------------------------------------------------------------------------
-# 3) Spatial overlay + proximity MCDA
-#    (risk_engine.score_parcels uses AHP weights + FEMA NFIP + exp decay)
-# -------------------------------------------------------------------------
 print("[3/4] Overlay analysis + proximity MCDA...")
 print("  Flood sub-scores (FEMA NFIP):")
 print("    SFHA 100-yr (A/AE/AH/AO/VE) = 100 | 500-yr (X500/B) = 50 | Zone X = 0")
@@ -107,16 +99,17 @@ avg_dist = parcels["fault_dist_meters"].replace([float("inf")], float("nan")).me
 print(f"  └─ Average fault distance: {avg_dist:.1f} m")
 print(f"  └─ Mean composite score: {parcels['composite_risk_score'].mean():.2f}")
 
-# -------------------------------------------------------------------------
-# 4) Export WGS84 GeoJSON for Step 5 cartography
-# -------------------------------------------------------------------------
-print("\n[4/4] Exporting analyzed parcels (EPSG:4326)...")
+print("\n[4/4] Exporting analyzed parcels (EPSG:4326 GeoParquet + FlatGeobuf)...")
 os.makedirs("outputs", exist_ok=True)
-output_file = "outputs/analyzed_parcels.geojson"
-# run_neighborhood_analysis / score_parcels already return WGS84
-parcels.to_file(output_file, driver="GeoJSON")
-parcels.to_file("analyzed_parcels.geojson", driver="GeoJSON")
-print(f"  └─ Saved '{output_file}'")
+written = write_geodata(
+    parcels,
+    "outputs/analyzed_parcels",
+    formats=("parquet", "fgb"),
+    target_crs=WGS84,
+    layer_name="analyzed_parcels",
+)
+for path in written:
+    print(f"  └─ Saved '{path}'")
 
 print("\n=========================================================")
 print(" ANALYSIS SUMMARY RESULTS")

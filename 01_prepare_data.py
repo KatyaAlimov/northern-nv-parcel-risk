@@ -2,7 +2,7 @@
 STEP 2: Data exploration, preparation & audit (batch / demo mode).
 
 Fetches a configurable Washoe street sample plus flood/fault layers via risk_engine,
-harmonizes CRS, audits quality, and writes a sanity plot.
+enforces CRS + topology gates, edge-buffers hazard queries, and writes GeoParquet.
 """
 
 import os
@@ -13,14 +13,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from risk_engine import (
+    EDGE_BUFFER_METERS,
     TARGET_CRS,
+    WGS84,
     bounds_to_envelope,
     envelope_from_parcel_buffers,
     fetch_fault_lines,
     fetch_flood_zones,
+    hazard_query_bounds,
     map_flood_risk,
+    prepare_layer,
     query_parcels_by_search,
-    sanitize_geometries,
+    write_geodata,
 )
 
 # Batch demo defaults (override by editing these before running)
@@ -44,8 +48,10 @@ if parcels.empty:
     )
 print(f"  └─ Parcels Loaded:     {len(parcels)} features")
 
-query_bounds = envelope_from_parcel_buffers(parcels, DEMO_RADIUS_M)
-query_envelope = bounds_to_envelope(query_bounds)
+study_bounds = envelope_from_parcel_buffers(parcels, DEMO_RADIUS_M)
+hazard_bounds = hazard_query_bounds(study_bounds, buffer_m=EDGE_BUFFER_METERS)
+query_envelope = bounds_to_envelope(hazard_bounds)
+print(f"  └─ Hazard query window edge-buffered by {EDGE_BUFFER_METERS:.0f} m")
 
 fema_zones = fetch_flood_zones(query_envelope)
 print(f"  └─ FEMA Zones Loaded:  {len(fema_zones)} features")
@@ -53,28 +59,24 @@ print(f"  └─ FEMA Zones Loaded:  {len(fema_zones)} features")
 fault_lines = fetch_fault_lines(query_envelope)
 print(f"  └─ USGS Faults Loaded: {len(fault_lines)} features\n")
 
-print(f"[2/5] Standardizing CRS projections to {TARGET_CRS} (Meters)...")
-parcels = parcels.to_crs(TARGET_CRS)
-fema_zones = fema_zones.to_crs(TARGET_CRS) if not fema_zones.empty else fema_zones
-fault_lines = fault_lines.to_crs(TARGET_CRS) if not fault_lines.empty else fault_lines
-print("  └─ Reprojection complete for all layers.\n")
+print(f"[2/5] CRS validation + transform gate → {TARGET_CRS} (meters)...")
+parcels = prepare_layer(parcels, TARGET_CRS, layer_name="parcels", assume_crs_if_missing=WGS84)
+fema_zones = prepare_layer(
+    fema_zones, TARGET_CRS, layer_name="fema_flood", assume_crs_if_missing=WGS84
+)
+fault_lines = prepare_layer(
+    fault_lines, TARGET_CRS, layer_name="usgs_faults", assume_crs_if_missing=WGS84
+)
+print("  └─ CRS gate PASS for all layers.\n")
 
-print("[3/5] Cleaning geometries and repairing invalid polygons...")
-
-def _clean(gdf, name):
-    cleaned = sanitize_geometries(gdf)
-    print(f"  └─ {name}: Cleaned & Validated ({len(cleaned)} features)")
-    return cleaned
-
-parcels = _clean(parcels, "Parcels")
-fema_zones = _clean(fema_zones, "FEMA Flood")
-fault_lines = _clean(fault_lines, "USGS Faults")
-print("")
+print("[3/5] Topology validation (make_valid) already applied in prepare_layer.")
+print(f"  └─ Parcels={len(parcels)} | FEMA={len(fema_zones)} | Faults={len(fault_lines)}\n")
 
 print("[4/5] Subsetting nationwide layers & mapping numeric risk scores...")
 minx, miny, maxx, maxy = parcels.total_bounds
+pad = EDGE_BUFFER_METERS
 if not fault_lines.empty:
-    fault_lines = fault_lines.cx[minx - 5000 : maxx + 5000, miny - 5000 : maxy + 5000]
+    fault_lines = fault_lines.cx[minx - pad : maxx + pad, miny - pad : maxy + pad]
 print(f"  └─ Clipped Fault Lines: {len(fault_lines)} local segments remaining")
 
 if not fema_zones.empty:
@@ -90,7 +92,9 @@ def run_gis_data_audit(gdf, layer_name, expected_crs=TARGET_CRS):
         print("  Warning: GeoDataFrame is empty.")
         return
     current_crs = str(gdf.crs) if gdf.crs is not None else "None"
-    crs_match = current_crs == expected_crs
+    crs_match = current_crs == expected_crs or (
+        gdf.crs is not None and gdf.crs.to_epsg() == int(expected_crs.split(":")[1])
+    )
     unit_name = gdf.crs.axis_info[0].unit_name if gdf.crs else "Unknown"
     print(f"  [1] CRS Check:        {current_crs} | Units: {unit_name}")
     print(f"      Status:           {'PASS' if crs_match else 'FAIL'}")
@@ -131,6 +135,21 @@ plot_path = "outputs/prepare_data_sanity_plot.png"
 plt.savefig(plot_path, dpi=150)
 plt.close()
 print(f"  └─ Saved sanity plot to '{plot_path}'")
+
+print("\n[!] Writing prepared layers (GeoParquet + FlatGeobuf)...")
+for name, gdf in (
+    ("parcels_prepared", parcels),
+    ("fema_prepared", fema_zones),
+    ("faults_prepared", fault_lines),
+):
+    paths = write_geodata(
+        gdf,
+        f"outputs/{name}",
+        formats=("parquet", "fgb"),
+        target_crs=WGS84,
+        layer_name=name,
+    )
+    print(f"  └─ {name}: {', '.join(str(p) for p in paths)}")
 
 print("\n=========================================================")
 print(" DATA PREPARATION COMPLETE & VERIFIED!")

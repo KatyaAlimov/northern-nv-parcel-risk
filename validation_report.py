@@ -11,7 +11,7 @@ Checks:
 
 Inputs (first found):
   outputs/reno_risk.parquet
-  outputs/analyzed_parcels.geojson
+  outputs/analyzed_parcels.parquet (.fgb / .geojson fallback)
 
 Outputs:
   outputs/validation_report.json
@@ -40,6 +40,7 @@ from risk_engine import (
     calculate_fault_score,
     compute_ahp_weights,
     categorize_risk,
+    read_geodata,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -47,23 +48,22 @@ OUT = ROOT / "outputs"
 
 
 def load_scored() -> gpd.GeoDataFrame:
-    parquet = OUT / "reno_risk.parquet"
-    geojson = OUT / "analyzed_parcels.geojson"
-    if parquet.exists():
-        gdf = gpd.read_parquet(parquet)
-        source = str(parquet)
-    elif geojson.exists():
-        gdf = gpd.read_file(geojson)
-        source = str(geojson)
-    else:
-        raise SystemExit(
-            "No scored dataset found. Run 02_run_analysis.py or 04_build_reno_tiles.py first."
-        )
-    if gdf.crs is None:
-        gdf = gdf.set_crs("EPSG:4326")
-    gdf.attrs["source"] = source
-    return gdf
-
+    for stem in ("reno_risk", "analyzed_parcels"):
+        try:
+            path = OUT / stem
+            gdf = read_geodata(path, layer_name=stem)
+            # Resolve which file was used for reporting
+            for suffix in (".parquet", ".fgb", ".geojson"):
+                candidate = OUT / f"{stem}{suffix}"
+                if candidate.exists():
+                    gdf.attrs["source"] = str(candidate)
+                    break
+            return gdf
+        except FileNotFoundError:
+            continue
+    raise SystemExit(
+        "No scored dataset found. Run 02_run_analysis.py or 04_build_reno_tiles.py first."
+    )
 
 def fault_calibration_check() -> dict:
     lam = fault_decay_lambda()
