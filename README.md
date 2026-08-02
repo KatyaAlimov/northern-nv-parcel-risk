@@ -115,7 +115,6 @@ Same scoring rules for both. Rules live in `config/scoring_config.yaml` so you c
 
 ## Spatial Methodology
 
-Plain English:
 
 1. **Flood** — Does the parcel sit in a flood zone?  
    - High-risk FEMA zones → score 100  
