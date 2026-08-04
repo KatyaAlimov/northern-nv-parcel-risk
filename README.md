@@ -13,11 +13,7 @@ exists and tiles are built.
 
 ## Walkthrough
 
-Short narrated overview of the lookup app and county map (~1 min).
-
-**[Download / watch the walkthrough](https://github.com/KatyaAlimov/northern-nv-parcel-risk/releases/download/walkthrough-1/northern_nv_parcel_risk_walkthrough.mp4)**
-
-(Also on the [Releases](https://github.com/KatyaAlimov/northern-nv-parcel-risk/releases/tag/walkthrough-1) page. GitHub’s file viewer can’t preview a video this size in-browser — use the download link.)
+[Project walkthrough (~1 min)](https://github.com/KatyaAlimov/northern-nv-parcel-risk/releases/download/walkthrough-1/northern_nv_parcel_risk_walkthrough.mp4)
 
 ---
 
