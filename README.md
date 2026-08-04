@@ -87,9 +87,6 @@ docker compose up --build
 
 Map locations use normal GPS coordinates; fault distance is calculated in meters.
 
-Weights and cutoffs: `config/scoring_config.yaml`  
-Which parcel service each county uses: `config/regions.yaml`
-
 ---
 
 ## Project layout
