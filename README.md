@@ -33,16 +33,15 @@ Douglas, Churchill, Humboldt, Elko.
 ## Architecture
 
 ```mermaid
-flowchart LR
-  parcels[County parcels] --> engine[risk_engine.py]
-  flood[FEMA / Esri flood] --> engine
-  faults[USGS faults] --> engine
-  config[Config YAML] --> engine
-  engine --> app[Streamlit lookup<br/>street / APN search]
-  engine --> batch[Pre-score county]
-  batch --> tiles[PMTiles]
-  tiles --> map[MapLibre county map]
+flowchart TB
+  A[County parcels] --> D[Score each parcel<br/>flood + fault → High / Moderate / Low]
+  B[FEMA flood zones] --> D
+  C[USGS faults] --> D
+  D --> E[Lookup app<br/>search a street or parcel]
+  D --> F[County map<br/>browse the full county]
 ```
+
+Same scoring feeds both the lookup app and the county map.
 
 ---
 
