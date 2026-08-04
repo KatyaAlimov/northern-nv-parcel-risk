@@ -11,7 +11,7 @@ Humboldt, Elko.
 
 ---
 
-## See it first (no install)
+## Walkthrough
 
 [**Project walkthrough (~1 min)**](https://katyaalimov.github.io/northern-nv-parcel-risk/walkthrough.html)
 
