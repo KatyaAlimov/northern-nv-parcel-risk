@@ -1,139 +1,105 @@
 # Northern Nevada Parcel Risk Pipeline
 
-Independent portfolio project: score **northern Nevada** parcels for flood and
-fault exposure, then explore results in a lookup app or a county-wide map.
+Portfolio project that scores northern Nevada parcels for **flood** and **fault**
+exposure, then shows the results in two places:
 
-Uses public ArcGIS REST services (county parcels, FEMA/Esri flood, USGS faults).
-Same scoring logic everywhere — weights live in YAML.
+- a **lookup app** (search a street or parcel number)
+- a **county map** (pan and zoom across pre-scored parcels)
 
-**Map-ready counties:** Washoe, Storey, Lyon, Carson City, Douglas, Churchill,
-Humboldt, Elko.
+Data comes from public web GIS services (county parcels, FEMA flood layers, USGS
+faults). Scoring rules are in a config file so they can be changed without
+rewriting the app.
+
+**Counties with maps ready to build:** Washoe, Storey, Lyon, Carson City,
+Douglas, Churchill, Humboldt, Elko.
 
 ---
 
 ## Walkthrough
 
-[**Project walkthrough (~1 min)**](https://katyaalimov.github.io/northern-nv-parcel-risk/walkthrough.html)
+[**Watch the project walkthrough (~1 min)**](https://katyaalimov.github.io/northern-nv-parcel-risk/walkthrough.html)
 
 ---
 
 ## What it does
 
-1. Pulls parcels, flood zones, and fault lines from public web GIS services  
-2. Checks flood-zone overlap and distance to the nearest fault  
-3. Combines them into **High / Moderate / Low**  
-4. Ships two interfaces:
-   - **Lookup app** — search by street, APN, or area (~10–40s on demand)  
-   - **County map** — pan/zoom pre-scored parcels (PMTiles + MapLibre)
+1. Downloads parcels, flood zones, and fault lines  
+2. Checks whether a parcel sits in a flood zone and how far it is from the nearest fault  
+3. Labels each parcel **High**, **Moderate**, or **Low**  
+4. Puts that answer in the lookup app and (after a map build) on a county map  
 
 ---
 
-## Quick start
+## How to run the lookup app
 
 ```bash
 git clone https://github.com/KatyaAlimov/northern-nv-parcel-risk.git
 cd northern-nv-parcel-risk
 python3 -m pip install -r requirements.txt
-```
-
-### Lookup app (works without building tiles)
-
-```bash
 python3 -m streamlit run app.py
-# → http://localhost:8501
 ```
 
-Or: `./run_app.sh`
+Open **http://localhost:8501**, pick a county, search by area / street / parcel
+number (APN), then click **Analyze risk**.
 
-1. Choose a **county**
-2. Search by **City area**, **Street**, or **APN**
-3. Click **Analyze risk**
+---
 
-### County map (needs tiles)
+## County map (optional)
 
-Tiles are large and gitignored. Build at least one county first (tippecanoe required):
+The full-county map files are large, so they are not stored in GitHub. To build
+and view Washoe’s map:
 
 ```bash
-brew install tippecanoe   # macOS
+# Needs tippecanoe (map tile tool). On macOS: brew install tippecanoe
 python3 04_build_reno_tiles.py --region washoe
-# → outputs/reno_risk.pmtiles
-```
-
-Then either:
-
-```bash
 python3 05_serve_city_map.py
-# → http://localhost:8080/city_map.html
 ```
 
-or, with Docker Desktop:
+Open **http://localhost:8080/city_map.html**.
+
+Use another county name with `--region` (for example `storey`, `lyon`, `elko`).
+
+**Or** run both the app and map with Docker (after tiles exist):
 
 ```bash
 docker compose up --build
-# Lookup:  http://localhost:8501
-# County map: http://localhost:8080/city_map.html
 ```
-
-Other counties: `storey`, `lyon`, `carson`, `douglas`, `churchill`, `humboldt`, `elko`.  
-Optional flags: `--max-parcels 5000`, `--tiles-only` (rebuild tiles from an existing score file).
 
 ---
 
-## Scoring (short version)
+## How risk is scored
 
-| Input | Rule |
+- **Flood:** parcels in a FEMA flood hazard area score higher  
+- **Fault:** parcels closer to a USGS fault score higher  
+- **Combined:** weighted mix of those two (about 60% flood / 40% fault by default)  
+- **Label:** High / Moderate / Low from the combined score  
+
+Map locations use normal GPS coordinates; fault distance is calculated in meters.
+
+Weights and cutoffs: `config/scoring_config.yaml`  
+Which parcel service each county uses: `config/regions.yaml`
+
+---
+
+## Project layout
+
+| File / folder | What it’s for |
 |---|---|
-| Flood | In FEMA SFHA → 100; moderate / 500-year → 50; else 0 |
-| Fault | Closer to USGS fault → higher score (exponential decay) |
-| Combined | Weighted average (~60% flood / ~40% fault by default) |
-| Label | ≥ 70 HIGH · 30–69 MODERATE · &lt; 30 LOW |
-
-- Map display: **WGS84**. Fault distance: **UTM Zone 11N** (real meters).  
-- Edit weights / thresholds in `config/scoring_config.yaml`.  
-- County parcel sources in `config/regions.yaml`.  
-
-```bash
-python3 validation_report.py   # → outputs/validation_report.md
-```
-
----
-
-## Architecture
-
-```
-  County parcels  ──┐
-  FEMA / Esri flood ┼──►  risk_engine.py  ──►  Streamlit app   (:8501)
-  USGS faults     ──┘           │
-                                └──►  PMTiles  ──►  MapLibre map (:8080)
-```
-
----
-
-## Repository layout
-
-| Path | Role |
-|---|---|
-| `app.py` | Streamlit lookup UI |
-| `risk_engine.py` | REST fetch, overlay scoring, Folium maps |
-| `config/regions.yaml` | Counties, parcel URLs, field maps |
-| `config/scoring_config.yaml` | Weights, flood/fault rules, tiers |
-| `04_build_reno_tiles.py` | Batch score → tippecanoe PMTiles |
-| `05_serve_city_map.py` | Local map server + lookup API |
-| `templates/city_map.html` | MapLibre county viewer |
-| `docker-compose.yml` | nginx + API + Streamlit |
-| `docs/walkthrough.html` | Playable walkthrough (GitHub Pages) |
-
-Other modules: `spatial_ops.py`, `parcel_lookup.py`, `*_loader.py`, `validation_report.py`,  
-and optional offline `01` / `02` / `03` demo scripts.
-
-Generated tiles and reports live under `outputs/` (gitignored).
+| `app.py` | Lookup app |
+| `risk_engine.py` | Downloads GIS data and scores parcels |
+| `config/` | County list and scoring settings |
+| `04_build_reno_tiles.py` | Builds the county map files |
+| `05_serve_city_map.py` | Serves the county map locally |
+| `templates/city_map.html` | County map web page |
+| `docker-compose.yml` | Runs the app + map together |
+| `docs/` | Walkthrough video and page |
 
 ---
 
 ## Data sources
 
-- County parcel ArcGIS REST layers (Washoe Open Data and other northern NV GIS endpoints)  
-- Esri Living Atlas — flood hazard  
-- USGS Quaternary faults (Nevada)  
+- County parcel layers (ArcGIS REST)  
+- FEMA / Esri flood hazard  
+- USGS Quaternary faults  
 
-No API keys required — services used here are public query endpoints.
+No API keys are required for these public services.
