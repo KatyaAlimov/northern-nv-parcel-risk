@@ -11,6 +11,14 @@ exists and tiles are built.
 
 ---
 
+## Walkthrough
+
+Short narrated overview of the lookup app and county map:
+
+**[Watch the walkthrough (MP4)](docs/northern_nv_parcel_risk_walkthrough.mp4)**
+
+---
+
 ## Quick start
 
 ### Docker
@@ -135,6 +143,7 @@ Scoring: `config/scoring_config.yaml`. Counties: `config/regions.yaml`.
 | `deploy/nginx.conf` | PMTiles Range + API proxy |
 | `requirements.txt` | Python dependencies |
 | `run_app.sh` | Convenience launcher for Streamlit |
+| `docs/northern_nv_parcel_risk_walkthrough.mp4` | Short project walkthrough video |
 
 Generated tiles and reports live under `outputs/` (gitignored).
 
