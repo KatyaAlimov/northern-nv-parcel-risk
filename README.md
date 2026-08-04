@@ -75,8 +75,7 @@ docker compose up --build
 ```
 
 Other counties: `storey`, `lyon`, `carson`, `douglas`, `churchill`, `humboldt`, `elko`.  
-Optional flags: `--max-parcels 5000`, `--tiles-only` (rebuild tiles from an existing score file).  
-Interrupted builds resume — completed grid cells are skipped.
+Optional flags: `--max-parcels 5000`, `--tiles-only` (rebuild tiles from an existing score file).
 
 ---
 
