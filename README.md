@@ -34,14 +34,47 @@ Douglas, Churchill, Humboldt, Elko.
 
 ```mermaid
 flowchart TB
-  A[County parcels] --> D[Score each parcel<br/>flood + fault → High / Moderate / Low]
-  B[FEMA flood zones] --> D
-  C[USGS faults] --> D
-  D --> E[Lookup app<br/>search a street or parcel]
-  D --> F[County map<br/>browse the full county]
-```
+  subgraph external [External GIS services]
+    ParcelREST[County parcel ArcGIS REST]
+    FloodREST[FEMA / Esri flood FeatureServer]
+    FaultREST[USGS Quaternary faults]
+  end
 
-Same scoring feeds both the lookup app and the county map.
+  subgraph config [Configuration]
+    Regions[regions.yaml]
+    Scoring[scoring_config.yaml]
+  end
+
+  subgraph core [Core library]
+    Engine[risk_engine.py<br/>query · CRS · overlay · composite score]
+  end
+
+  Regions --> Engine
+  Scoring --> Engine
+  ParcelREST --> Engine
+  FloodREST --> Engine
+  FaultREST --> Engine
+
+  subgraph interactive [Interactive analysis]
+    Streamlit[Streamlit app.py :8501]
+    Folium[Folium neighborhood map]
+  end
+
+  subgraph batch [Batch publish]
+    Build[04_build_reno_tiles.py]
+    Tippecanoe[tippecanoe]
+    PMTiles[(*.pmtiles)]
+    Nginx[nginx :8080]
+    MapLibre[city_map.html · MapLibre GL]
+    API[parcel lookup API]
+  end
+
+  Engine --> Streamlit --> Folium
+  Engine --> Build --> Tippecanoe --> PMTiles
+  PMTiles --> Nginx --> MapLibre
+  Nginx --> API
+  API --> Engine
+```
 
 ---
 
