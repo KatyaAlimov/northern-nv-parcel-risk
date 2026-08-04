@@ -44,7 +44,7 @@ number (APN), then click **Analyze risk**.
 
 ---
 
-## County map (optional)
+## County map
 
 The full-county map files are large, so they are not stored in GitHub. To build
 and view Washoe’s map:
