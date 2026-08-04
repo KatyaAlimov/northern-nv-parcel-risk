@@ -30,6 +30,17 @@ Douglas, Churchill, Humboldt, Elko.
 
 ---
 
+## Architecture
+
+```
+  County parcels  ──┐
+  FEMA / Esri flood ┼──►  risk_engine.py  ──►  Streamlit app   (:8501)
+  USGS faults     ──┘           │
+                                └──►  PMTiles  ──►  MapLibre map (:8080)
+```
+
+---
+
 ## How to run the lookup app
 
 ```bash
