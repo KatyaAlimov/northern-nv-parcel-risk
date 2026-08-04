@@ -9,8 +9,6 @@ Same scoring logic everywhere — weights live in YAML.
 **Map-ready counties:** Washoe, Storey, Lyon, Carson City, Douglas, Churchill,
 Humboldt, Elko.
 
-> Demo / decision-support only — not an official flood, geologic, or insurance determination.
-
 ---
 
 ## See it first (no install)
