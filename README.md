@@ -33,14 +33,47 @@ Douglas, Churchill, Humboldt, Elko.
 ## Architecture
 
 ```mermaid
-flowchart LR
-  parcels[County parcels] --> engine[risk_engine.py]
-  flood[FEMA / Esri flood] --> engine
-  faults[USGS faults] --> engine
-  engine --> app[Streamlit lookup app]
-  engine --> tiles[PMTiles]
-  tiles --> map[MapLibre county map]
+flowchart TB
+  subgraph sources [Data sources — public ArcGIS REST]
+    parcels[County parcel layers]
+    flood[FEMA / Esri flood zones]
+    faults[USGS fault lines]
+  end
+
+  subgraph config [Config]
+    regions[config/regions.yaml<br/>which county, which parcel URL]
+    scoring[config/scoring_config.yaml<br/>weights and High / Moderate / Low cutoffs]
+  end
+
+  subgraph core [Analysis — risk_engine.py]
+    fetch[Download parcels + hazards]
+    spatial[Spatial analysis<br/>flood overlap + fault distance in meters]
+    score[Combine into High / Moderate / Low]
+  end
+
+  parcels --> fetch
+  flood --> fetch
+  faults --> fetch
+  regions --> fetch
+  scoring --> score
+  fetch --> spatial --> score
+
+  subgraph lookup [Path A — on-demand lookup]
+    streamlit[Streamlit app :8501<br/>search street / APN / area]
+    folium[Neighborhood Folium map]
+  end
+
+  subgraph county [Path B — county-wide map]
+    batch[04_build_reno_tiles.py<br/>pre-score whole county]
+    tiles[PMTiles file]
+    maplibre[MapLibre map :8080<br/>pan / zoom pre-scored parcels]
+  end
+
+  score --> streamlit --> folium
+  score --> batch --> tiles --> maplibre
 ```
+
+**In plain terms:** both tools call the same scoring engine. The lookup app scores a small search on demand. The county map precomputes scores once into map tiles so the whole county stays fast to browse.
 
 ---
 
