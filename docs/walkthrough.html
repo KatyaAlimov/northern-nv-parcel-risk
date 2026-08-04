@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Northern Nevada Parcel Risk — Walkthrough</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --text: #e8eef4;
+      --muted: #9aa8b5;
+      --accent: #3d8bfd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #1c2a3a 0%, var(--bg) 55%);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 3rem;
+    }
+    header {
+      width: min(960px, 100%);
+      margin-bottom: 1.25rem;
+    }
+    h1 {
+      font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+      font-weight: 650;
+      margin: 0 0 0.35rem;
+      letter-spacing: -0.02em;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+    .player {
+      width: min(960px, 100%);
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    }
+    video {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #000;
+      vertical-align: middle;
+    }
+    footer {
+      width: min(960px, 100%);
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Northern Nevada Parcel Risk</h1>
+    <p>Short walkthrough of the lookup app and county map (~1 min).</p>
+  </header>
+  <div class="player">
+    <video controls playsinline preload="metadata"
+      src="northern_nv_parcel_risk_walkthrough.mp4"
+      title="Project walkthrough">
+      Your browser does not support HTML video.
+      <a href="northern_nv_parcel_risk_walkthrough.mp4">Open the MP4</a>.
+    </video>
+  </div>
+  <footer>
+    <a href="https://github.com/KatyaAlimov/northern-nv-parcel-risk">← Back to the repository</a>
+  </footer>
+</body>
+</html>

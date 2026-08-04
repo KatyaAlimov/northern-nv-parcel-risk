@@ -13,7 +13,7 @@ exists and tiles are built.
 
 ## Walkthrough
 
-[Project walkthrough (~1 min)](https://github.com/KatyaAlimov/northern-nv-parcel-risk/releases/download/walkthrough-1/northern_nv_parcel_risk_walkthrough.mp4)
+[Project walkthrough (~1 min)](https://katyaalimov.github.io/northern-nv-parcel-risk/walkthrough.html)
 
 ---
 
@@ -141,7 +141,8 @@ Scoring: `config/scoring_config.yaml`. Counties: `config/regions.yaml`.
 | `deploy/nginx.conf` | PMTiles Range + API proxy |
 | `requirements.txt` | Python dependencies |
 | `run_app.sh` | Convenience launcher for Streamlit |
-| `docs/northern_nv_parcel_risk_walkthrough.mp4` | Short project walkthrough video |
+| `docs/walkthrough.html` | Playable walkthrough page (GitHub Pages) |
+| `docs/northern_nv_parcel_risk_walkthrough.mp4` | Walkthrough video used by that page |
 
 Generated tiles and reports live under `outputs/` (gitignored).
 
