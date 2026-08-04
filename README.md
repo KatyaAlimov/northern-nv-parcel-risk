@@ -1,96 +1,103 @@
 # Northern Nevada Parcel Risk Pipeline
 
-Flood + fault scoring for **northern Nevada** parcels. Pick a county in the lookup
-app or the interactive map — same scoring rules everywhere.
+Independent portfolio project: score **northern Nevada** parcels for flood and
+fault exposure, then explore results in a lookup app or a county-wide map.
 
-**Map-ready counties today:** Washoe, Storey, Lyon, Carson City, Douglas, Churchill,
-Humboldt, Elko. Add more in `config/regions.yaml` when a public parcel service
-exists and tiles are built.
+Uses public ArcGIS REST services (county parcels, FEMA/Esri flood, USGS faults).
+Same scoring logic everywhere — weights live in YAML.
 
-> Not an official flood, geologic, or insurance determination.
+**Map-ready counties:** Washoe, Storey, Lyon, Carson City, Douglas, Churchill,
+Humboldt, Elko.
 
----
-
-## Walkthrough
-
-[Project walkthrough (~1 min)](https://katyaalimov.github.io/northern-nv-parcel-risk/walkthrough.html)
+> Demo / decision-support only — not an official flood, geologic, or insurance determination.
 
 ---
 
-## Quick start
+## See it first (no install)
 
-### Docker
-
-Requires Docker Desktop. County tiles should be in `outputs/*_risk.pmtiles`
-(see [Build county tiles](#build-county-tiles) if missing).
-
-```bash
-cd wash_county_risk_pipeline
-docker compose up --build
-```
-
-| What | URL |
-|---|---|
-| Lookup app | http://localhost:8501 |
-| County map | http://localhost:8080/city_map.html |
-
-Stop with `Ctrl+C` or `docker compose down`.
-
-### Without Docker
-
-```bash
-python3 -m pip install -r requirements.txt
-python3 -m streamlit run app.py          # http://localhost:8501
-python3 05_serve_city_map.py             # http://localhost:8080/city_map.html
-```
-
-Or: `./run_app.sh` for Streamlit only.
-
-### Lookup app
-
-1. Choose a **county**, then **City area**, **Street**, or **APN**
-2. Click **Analyze risk** (~10–40 seconds)
-3. Review the map, summary, and optional CSV / GeoJSON download
-
-### Build county tiles
-
-```bash
-brew install tippecanoe
-
-python3 04_build_reno_tiles.py --region washoe   # → outputs/reno_risk.pmtiles
-python3 04_build_reno_tiles.py --region storey
-python3 04_build_reno_tiles.py --region lyon
-python3 04_build_reno_tiles.py --region carson
-python3 04_build_reno_tiles.py --region douglas
-python3 04_build_reno_tiles.py --region churchill
-python3 04_build_reno_tiles.py --region humboldt
-python3 04_build_reno_tiles.py --region elko
-
-# Optional: --max-parcels 5000 | --tiles-only
-```
-
-If a run stops early, run the same command again — completed grid cells are skipped.
-The map dropdown only lists counties with a valid `*_risk.pmtiles` file.
-
-### Validate scores
-
-```bash
-python3 validation_report.py
-# → outputs/validation_report.md
-```
+[**Project walkthrough (~1 min)**](https://katyaalimov.github.io/northern-nv-parcel-risk/walkthrough.html)
 
 ---
 
 ## What it does
 
-1. Downloads parcels, flood zones, and fault lines from public web GIS services  
-2. Tests flood-zone intersection and distance to the nearest fault  
-3. Combines those into **High / Moderate / Low**  
-4. Delivers results in:
-   - **Lookup app** — live street / APN / district search  
-   - **County map** — pre-built PMTiles for pan/zoom  
+1. Pulls parcels, flood zones, and fault lines from public web GIS services  
+2. Checks flood-zone overlap and distance to the nearest fault  
+3. Combines them into **High / Moderate / Low**  
+4. Ships two interfaces:
+   - **Lookup app** — search by street, APN, or area (~10–40s on demand)  
+   - **County map** — pan/zoom pre-scored parcels (PMTiles + MapLibre)
 
-Scoring: `config/scoring_config.yaml`. Counties: `config/regions.yaml`.
+---
+
+## Quick start
+
+```bash
+git clone https://github.com/KatyaAlimov/northern-nv-parcel-risk.git
+cd northern-nv-parcel-risk
+python3 -m pip install -r requirements.txt
+```
+
+### Lookup app (works without building tiles)
+
+```bash
+python3 -m streamlit run app.py
+# → http://localhost:8501
+```
+
+Or: `./run_app.sh`
+
+1. Choose a **county**
+2. Search by **City area**, **Street**, or **APN**
+3. Click **Analyze risk**
+
+### County map (needs tiles)
+
+Tiles are large and gitignored. Build at least one county first (tippecanoe required):
+
+```bash
+brew install tippecanoe   # macOS
+python3 04_build_reno_tiles.py --region washoe
+# → outputs/reno_risk.pmtiles
+```
+
+Then either:
+
+```bash
+python3 05_serve_city_map.py
+# → http://localhost:8080/city_map.html
+```
+
+or, with Docker Desktop:
+
+```bash
+docker compose up --build
+# Lookup:  http://localhost:8501
+# County map: http://localhost:8080/city_map.html
+```
+
+Other counties: `storey`, `lyon`, `carson`, `douglas`, `churchill`, `humboldt`, `elko`.  
+Optional flags: `--max-parcels 5000`, `--tiles-only` (rebuild tiles from an existing score file).  
+Interrupted builds resume — completed grid cells are skipped.
+
+---
+
+## Scoring (short version)
+
+| Input | Rule |
+|---|---|
+| Flood | In FEMA SFHA → 100; moderate / 500-year → 50; else 0 |
+| Fault | Closer to USGS fault → higher score (exponential decay) |
+| Combined | Weighted average (~60% flood / ~40% fault by default) |
+| Label | ≥ 70 HIGH · 30–69 MODERATE · &lt; 30 LOW |
+
+- Map display: **WGS84**. Fault distance: **UTM Zone 11N** (real meters).  
+- Edit weights / thresholds in `config/scoring_config.yaml`.  
+- County parcel sources in `config/regions.yaml`.  
+
+```bash
+python3 validation_report.py   # → outputs/validation_report.md
+```
 
 ---
 
@@ -105,44 +112,22 @@ Scoring: `config/scoring_config.yaml`. Counties: `config/regions.yaml`.
 
 ---
 
-## Scoring method
-
-1. **Flood** — parcel in FEMA SFHA → 100; moderate / 500-year → 50; else 0  
-2. **Fault** — closer to USGS fault → higher score (exponential decay)  
-3. **Composite** — weighted average (~60% flood / ~40% fault by default)  
-   - ≥ 70 HIGH · 30–69 MODERATE · &lt; 30 LOW  
-
-- Distances in **UTM Zone 11N**; maps in **WGS84**  
-- Topology repair and CRS checks in `spatial_ops.py`  
-- Hazard queries use a **5 km** buffer past the study window  
-
----
-
 ## Repository layout
 
 | Path | Role |
 |---|---|
 | `app.py` | Streamlit lookup UI |
 | `risk_engine.py` | REST fetch, overlay scoring, Folium maps |
-| `parcel_lookup.py` | Street/APN lookup for map API + app |
-| `regions_loader.py` | Load `config/regions.yaml` |
-| `config_loader.py` | Load `config/scoring_config.yaml` |
-| `spatial_ops.py` | CRS, topology, GeoParquet I/O |
-| `config/regions.yaml` | County bounds, parcel URLs, field maps |
-| `config/scoring_config.yaml` | AHP weights, flood/fault rules, tiers |
-| `04_build_reno_tiles.py` | Grid fetch → score → tippecanoe PMTiles |
-| `05_serve_city_map.py` | Local map server + `/api/lookup` + `/api/regions` |
+| `config/regions.yaml` | Counties, parcel URLs, field maps |
+| `config/scoring_config.yaml` | Weights, flood/fault rules, tiers |
+| `04_build_reno_tiles.py` | Batch score → tippecanoe PMTiles |
+| `05_serve_city_map.py` | Local map server + lookup API |
 | `templates/city_map.html` | MapLibre county viewer |
-| `01_prepare_data.py` | Offline demo: fetch sample neighborhood |
-| `02_run_analysis.py` | Offline demo: score sample |
-| `03_build_app.py` | Offline demo: static Folium HTML |
-| `validation_report.py` | Score / AHP sanity report |
-| `docker-compose.yml` | web (nginx) + api + Streamlit |
-| `deploy/nginx.conf` | PMTiles Range + API proxy |
-| `requirements.txt` | Python dependencies |
-| `run_app.sh` | Convenience launcher for Streamlit |
-| `docs/walkthrough.html` | Playable walkthrough page (GitHub Pages) |
-| `docs/northern_nv_parcel_risk_walkthrough.mp4` | Walkthrough video used by that page |
+| `docker-compose.yml` | nginx + API + Streamlit |
+| `docs/walkthrough.html` | Playable walkthrough (GitHub Pages) |
+
+Other modules: `spatial_ops.py`, `parcel_lookup.py`, `*_loader.py`, `validation_report.py`,  
+and optional offline `01` / `02` / `03` demo scripts.
 
 Generated tiles and reports live under `outputs/` (gitignored).
 
@@ -154,13 +139,4 @@ Generated tiles and reports live under `outputs/` (gitignored).
 - Esri Living Atlas — flood hazard  
 - USGS Quaternary faults (Nevada)  
 
----
-
-## Offline demo (optional)
-
-```bash
-python3 01_prepare_data.py
-python3 02_run_analysis.py
-python3 03_build_app.py
-# open outputs/index.html
-```
+No API keys required — services used here are public query endpoints.
