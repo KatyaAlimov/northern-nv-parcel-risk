@@ -32,11 +32,14 @@ Douglas, Churchill, Humboldt, Elko.
 
 ## Architecture
 
-```
-  County parcels  ──┐
-  FEMA / Esri flood ┼──►  risk_engine.py  ──►  Streamlit app   (:8501)
-  USGS faults     ──┘           │
-                                └──►  PMTiles  ──►  MapLibre map (:8080)
+```mermaid
+flowchart LR
+  parcels[County parcels] --> engine[risk_engine.py]
+  flood[FEMA / Esri flood] --> engine
+  faults[USGS faults] --> engine
+  engine --> app[Streamlit lookup app]
+  engine --> tiles[PMTiles]
+  tiles --> map[MapLibre county map]
 ```
 
 ---
